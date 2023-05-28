@@ -1,5 +1,5 @@
 // MODULE HELP
-const {CommandInfo} = require("../../utils/interaction")
+const {CommandInfo} = require("../../utils/interactionBase")
 const {Message} = require('../../utils/message')
 const {Embed} = require('../../utils/embed')
 MODULE_MANAGER = require("../../core/module_manager").get()
@@ -15,7 +15,7 @@ class Module {
 
     /**
      * // When command is executed
-     * @param command {Interaction}
+     * @param command {InteractionBase}
      * @return {Promise<void>}
      */
     async server_interaction(command) {

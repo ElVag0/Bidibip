@@ -1,5 +1,5 @@
 // MODULE UTILITIES
-const {CommandInfo} = require("../../utils/interaction")
+const {CommandInfo} = require("../../utils/interactionBase")
 const MODULE_MANAGER = require('../../core/module_manager').get()
 const CONFIG = require('../../config').get()
 const LOGGER = require('../../utils/logger').get()
@@ -78,7 +78,7 @@ class Module {
 
     /**
      * // When command is executed
-     * @param command {Interaction}
+     * @param command {InteractionBase}
      * @return {Promise<void>}
      */
     async server_interaction(command) {

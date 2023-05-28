@@ -116,26 +116,18 @@ class CommandInfo {
     }
 }
 
-class Interaction {
+class InteractionBase {
     /**
      * @param source_command {CommandInfo}
      * @param discord_interaction {Discord.BaseInteraction}
      */
-    constructor(source_command, discord_interaction) {
-        this._source_command = source_command
+    constructor(discord_interaction) {
         this._interaction = discord_interaction
+        this._id = discord_interaction.id
         this._options = {}
         this._author = new User(discord_interaction.user)
         this._channel = new Channel().set_id(discord_interaction.channelId)
         this._context_permissions = discord_interaction.memberPermissions ? discord_interaction.memberPermissions.bitfield : 0n
-
-        if (source_command)
-            for (const option of source_command.options)
-                this._options[option.name] = option.default_value
-
-        if (discord_interaction.options)
-            for (const option of discord_interaction.options._hoistedOptions)
-                this._options[option.name] = option.value
     }
 
     /**
@@ -150,18 +142,17 @@ class Interaction {
     /**
      * Reply to this command
      * @param message {Message}
-     * @param interaction_callback {function|null}
-     * @returns {Promise<number|null>} message id
+     * @returns {Promise<InteractionBase>} message id
      */
-    async reply(message, interaction_callback = null) {
+    async reply(message) {
         try {
             const res = await this._interaction.reply(message._output_to_discord())
                 .catch(err => console.fatal(`failed to reply to command : ${err}`))
-            if (interaction_callback)
-                DI.get().module_manager.event_manager().watch_interaction(res.id, interaction_callback)
-            return res.id
+            const interaction = new InteractionBase(res)
+            interaction._channel = this.channel()
+            return interaction
         } catch (err) {
-            console.error(`failed to reply to command : ${err}`, message)
+            console.error(`failed to reply to command : ${err} : \n`, message)
         }
     }
 
@@ -193,15 +184,6 @@ class Interaction {
     }
 
     /**
-     * Read option value
-     * @param option {string} option name
-     * @returns {*|null}
-     */
-    read(option) {
-        return this._options[option]
-    }
-
-    /**
      * Delete reply
      * @returns {Promise<void>}
      */
@@ -219,19 +201,15 @@ class Interaction {
     }
 
     /**
-     * Get initial command infos
-     * @returns {CommandInfo}
-     */
-    source_command() {
-        return this._source_command
-    }
-
-    /**
      * Get the channel id this interaction have been sent
      * @returns {Channel}
      */
     channel() {
         return this._channel
+    }
+
+    id() {
+        return this._id
     }
 
     /**
@@ -244,11 +222,102 @@ class Interaction {
 
     /**
      * Get the author of this interaction
-     * @returns {Promise<User>}
+     * @returns {User}
      */
-    async author() {
+    author() {
         return this._author
     }
 }
 
-module.exports = {Interaction, CommandInfo}
+class CommandInteraction extends InteractionBase {
+    constructor(source_command, _api_handle) {
+        super(_api_handle)
+        this._source_command = source_command
+
+        if (source_command)
+            for (const option of source_command.options)
+                this._options[option.name] = option.default_value
+
+        if (_api_handle.options)
+            for (const option of _api_handle.options._hoistedOptions)
+                this._options[option.name] = option.value
+
+        this._name = _api_handle.name
+    }
+
+    /**
+     * Get command name
+     * @returns {string}
+     */
+    name() {
+        return this._name
+    }
+
+    /**
+     * Get initial command infos
+     * @returns {CommandInfo}
+     */
+    source_command() {
+        return this._source_command
+    }
+
+    /**
+     * Read option value
+     * @param option {string} option name
+     * @returns {*|null}
+     */
+    read(option) {
+        return this._options[option]
+    }
+
+    /**
+     * Get all options
+     * @returns {{}}
+     */
+    options() {
+        return this._options
+    }
+
+    /**
+     * Ensure the user that sent this interaction has the required permissions
+     * @returns {boolean}
+     */
+    check_permissions() {
+        return this.source_command().has_permission(this.context_permissions())
+    }
+}
+
+class ButtonInteraction extends InteractionBase {
+    constructor(_api_handle) {
+        super(_api_handle)
+        this._message = new Message(_api_handle.message)
+        this._button_id = _api_handle.customId
+        this._base_id = _api_handle.message.interaction ? _api_handle.message.interaction.id : _api_handle.message.id
+    }
+
+    /**
+     * Get message where the button is attached
+     * @returns {Message}
+     */
+    message() {
+        return this._message
+    }
+
+    /**
+     * Get clicked button id
+     * @returns {string}
+     */
+    button_id() {
+        return this._button_id
+    }
+
+    /**
+     * Id of the message or the interaction where the button is located
+     * @returns {string}
+     */
+    base_id() {
+        return this._base_id
+    }
+}
+
+module.exports = {InteractionBase, CommandInteraction, ButtonInteraction, CommandInfo}

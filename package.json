@@ -1,6 +1,6 @@
 {
   "name": "bot-discord",
-  "version": "3.1.8",
+  "version": "3.2.0",
   "description": "Bot discord for a specific server",
   "main": "index.js",
   "scripts": {

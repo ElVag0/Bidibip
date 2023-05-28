@@ -1,5 +1,5 @@
 // MODULE QUOTE
-const {CommandInfo} = require("../../utils/interaction")
+const {CommandInfo} = require("../../utils/interactionBase")
 const {resolve} = require('path')
 const CONFIG = require('../../config').get()
 const {Message} = require('../../utils/message')
@@ -32,7 +32,7 @@ class Module {
 
     /**
      * // When command is executed
-     * @param command {Interaction}
+     * @param command {InteractionBase}
      * @return {Promise<void>}
      */
     async server_interaction(command) {

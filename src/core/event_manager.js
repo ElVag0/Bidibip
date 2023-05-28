@@ -1,19 +1,20 @@
 const DI = require("../utils/discord_interface");
 const {Message} = require("../utils/message");
-const {Interaction} = require("../utils/interaction");
+const {InteractionBase, CommandInteraction, ButtonInteraction} = require("../utils/interactionBase");
 const {User} = require("../utils/user");
 const CONFIG = require("../config");
 const {CommandDispatcher} = require("./command_dispatcher");
 const {Channel} = require("../utils/channel");
 const {Thread} = require("../utils/thread");
+const {Button} = require("../utils/button");
 
 
 class EventManager {
     constructor(client) {
         this._bound_modules = []
         this._command_modules = {}
-        this._command_manager = new CommandDispatcher(client)
-        this._interactions = {}
+        this._command_dispatcher = new CommandDispatcher(client)
+        this._bound_buttons = {}
 
         DI.get().on_thread_create = thread => {
             this._thread_created(new Thread(thread))
@@ -36,68 +37,77 @@ class EventManager {
                 this._server_message(message)
         }
         DI.get().on_interaction = interaction => {
-            if (interaction.isButton() && !interaction.message.interaction) {
-                console.log(interaction)
-                return false
-            }
-            if (interaction.isButton()) {
+            switch (interaction.type) {
+                case 2: // Chat command
+                    const command_interaction = new CommandInteraction(this._command_dispatcher.find(interaction.commandName), interaction)
 
-                if (!this._interactions[interaction.message.interaction.id]) {
-                    new Interaction(this._command_manager.find(interaction.commandName), interaction).skip()
-                    return
-                }
-                const inter = this._interactions[interaction.message.interaction.id]
-                if (inter) {
-                    let removed = []
-                    for (const callback in inter) {
-                        if (inter[callback](
-                            interaction.customId,
-                            interaction.message.interaction.id,
-                            new Message(interaction.message)) === false)
-                            removed.push(callback)
+                    // Log
+                    let option_string = ''
+                    for (const [name, value] of Object.entries(command_interaction.options())) option_string += name + ': ' + value + ', '
+                    console.info(`User [${interaction.user.username}#${interaction.user.discriminator}] issued {'${interaction.commandName} ${option_string.substring(0, option_string.length - 2)}'}`)
+
+                    // Ensure command exists
+                    if (command_interaction.source_command() === null) {
+                        command_interaction.reply(new Message().set_text("Commande inconnue").set_client_only())
+                            .catch(err => console.fatal(`failed to reply to interaction : ${err}`))
+                        return
                     }
-                    for (let i = removed.length; i >= 0; i--)
-                        this._interactions[interaction.message.interaction.id].splice(removed[i], 1)
-                    if (this._interactions[interaction.message.interaction.id].length === 0)
-                        delete this._interactions[interaction.message.interaction.id]
-                }
-                new Interaction(this._command_manager.find(interaction.commandName), interaction).skip()
-                    .catch(err => console.fatal(`failed to skip interaction : ${err}`))
-                return
-            }
-            let options = ''
-            for (const option of interaction.options._hoistedOptions) {
-                options += option.name + ': ' + option.value + ', '
-            }
-            options = options.substring(0, options.length - 2)
 
-            console.info(`User [${interaction.user.username}#${interaction.user.discriminator}] issued {'${interaction.commandName} ${options}'}`)
+                    // Ensure user has permissions
+                    if (!command_interaction.check_permissions()) {
+                        command_interaction.author().full_name()
+                            .then(full_name => {
+                                new Message()
+                                    .set_channel(new Channel().set_id(CONFIG.get().LOG_CHANNEL_ID))
+                                    .set_text(`${full_name} (${'<@' + new User(interaction.user).id() + '>'}) a essayé d'exécuter la commande '${command.name}' sans en avoir la permission ${CONFIG.get().SERVICE_ROLE} !`)
+                                    .send()
+                                    .catch(err => console.fatal(`failed to notify usage error : ${err}`))
+                                console.warning(`@${full_name} a essayé d\'exécuter la commande \'${command.name}\' sans en avoir la permission !`)
+                            })
+                            .catch(err => {
+                                console.fatal(`failed to notify usage error : ${err}`)
+                            })
+                        command_interaction.skip()
+                            .catch(err => console.fatal(`failed to skip interaction : ${err}`))
+                    } else
+                        this._command_dispatcher.execute_command(command_interaction)
+                    break
+                case 3: // Button clicked
+                    (async () => {
+                        const button_interaction = new ButtonInteraction(interaction)
+                        let key = `${button_interaction.channel().id()}/${button_interaction.message().id()}`
 
-            const command = this._command_manager.find(interaction.commandName)
-            if (command === null) {
-                interaction.reply(new Message().set_text("Commande inconnue").set_client_only())
-                return
+                        let buttons = this._bound_buttons[key]
+                        if (!buttons) {
+                            key = `${button_interaction.channel().id()}/${interaction.message.interaction.id}`
+                            buttons = this._bound_buttons[key]
+                        }
+
+                        console.info(`User [${interaction.user.username}#${interaction.user.discriminator}] clicked '${key}' on message ${button_interaction.message().id()}`)
+
+                        if (buttons) {
+                            const removed = []
+                            for (const button of buttons)
+                                if (await button.callback.call(module, button_interaction).catch(err => console.fatal(`Button Interaction failed : ${err}`)) === false)
+                                    removed.push(button)
+                            for (const button of removed)
+                                buttons.splice(buttons.indexOf(button), 1)
+
+                            if (buttons.length === 0)
+                                delete this._bound_buttons[key]
+                        } else {
+                            button_interaction.reply(new Message().set_client_only().set_text('Cette interaction n\'est plus valide')).catch(err => console.fatal(`failed to reply to interaction : ${err}`))
+                            const message = button_interaction.message()
+                            const disabled_button = await message.get_button_by_id(button_interaction.button_id())
+                            disabled_button.set_enabled(false)
+                            message.update(message)
+                                .catch(err => console.warning(`udpate failed : ${err}`))
+                        }
+                    })().catch(err => console.error(`Button Interaction failed : ${err}`))
+                    break
+                default:
+                    console.error('undefined interaction : ', interaction)
             }
-
-            const command_interaction = new Interaction(command, interaction)
-            if (command_interaction.context_permissions() && !command.has_permission(command_interaction.context_permissions())) {
-                new User(interaction.user).full_name()
-                    .then(name => {
-                        new Message()
-                            .set_channel(new Channel().set_id(CONFIG.get().LOG_CHANNEL_ID))
-                            .set_text(`${name} (${'<@' + new User(interaction.user).id() + '>'}) a essayé d'exécuter la commande '${command.name}' sans en avoir la permission ${CONFIG.get().SERVICE_ROLE} !`)
-                            .send()
-                            .catch(err => console.fatal(`failed to notify usage error : ${err}`))
-                        console.warning(`@${name} a essayé d\'exécuter la commande \'${command.name}\' sans en avoir la permission !`)
-                    })
-                    .catch(err => {
-                        console.fatal(`failed to notify usage error : ${err}`)
-                    })
-                console.warning('Invalid permission usage !')
-                command_interaction.skip()
-                    .catch(err => console.fatal(`failed to skip interaction : ${err}`))
-            } else
-                this._command_manager.execute_command(command_interaction)
         }
     }
 
@@ -115,7 +125,7 @@ class EventManager {
                     this._command_modules[command.name].push(module)
             }
 
-        this._command_manager.add(module)
+        this._command_dispatcher.add(module)
         this._bound_modules.push(module)
     }
 
@@ -124,7 +134,7 @@ class EventManager {
         if (index === -1)
             return // already unbound
 
-        this._command_manager.remove(module)
+        this._command_dispatcher.remove(module)
         this._bound_modules.splice(this._bound_modules.indexOf(module), 1)
 
         // Unregister old
@@ -179,14 +189,18 @@ class EventManager {
     }
 
     get_commands(permissions) {
-        return this._command_manager ? this._command_manager.get_commands(permissions) : null
+        return this._command_dispatcher ? this._command_dispatcher.get_commands(permissions) : null
     }
 
-    watch_interaction(interaction_id, callback) {
-        if (!this._interactions[interaction_id])
-            this._interactions[interaction_id] = [callback]
-        else
-            this._interactions[interaction_id].push(callback)
+    bind_button(module, button_message, callback) {
+        const key = `${button_message.channel().id()}/${button_message.id()}`
+        if (!this._bound_buttons[key])
+            this._bound_buttons[key] = []
+
+        this._bound_buttons[key].push({
+            module: module,
+            callback: callback
+        })
     }
 }
 

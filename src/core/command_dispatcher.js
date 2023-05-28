@@ -4,6 +4,7 @@ class CommandDispatcher {
     constructor() {
         this.modules = {}
         this.commands = {}
+        this.interaction_listener = {}
     }
 
     add(module) {
@@ -78,6 +79,16 @@ class CommandDispatcher {
                         module.server_interaction(command)
                             .catch(err => console.error(`Failed to call 'server_interaction()' on module ${module.name} :\n${err}`))
                     })()
+
+    }
+
+    button_pressed(interaction) {
+        for (const module of found_command.modules)
+            if (module.server_interaction)
+                (async () => {
+                    module.server_interaction(command)
+                        .catch(err => console.error(`Failed to call 'server_interaction()' on module ${module.name} :\n${err}`))
+                })()
 
     }
 

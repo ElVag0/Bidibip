@@ -64,6 +64,7 @@ class Channel {
         this._id = _api_handle.id
         this._parent_channel = new Channel().set_id(_api_handle.parentId)
         this._type = _api_handle.type
+        this._name = _api_handle.name
     }
 
     /**

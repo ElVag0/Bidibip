@@ -5,6 +5,13 @@ const {Client, Partials, GatewayIntentBits} = require('discord.js')
 
 require('./utils/logger').init_logger()
 
+// Suppress "(node:3468) ExperimentalWarning: buffer.File is an experimental feature and might change at any time"
+const initial_emit = process.emit;
+process.emit = function (name, data, ...args) {
+    if (name === `warning` && typeof data === `object` && data.name === `ExperimentalWarning`) return false
+    return initial_emit.apply(process, arguments);
+};
+
 /*
 GIT AUTO-UPDATER
  */

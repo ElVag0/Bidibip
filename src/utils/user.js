@@ -51,7 +51,7 @@ class User {
 
     /**
      * Get profile picture
-     * @return {Promise<Discord.ImageURLOptions>}
+     * @return {Promise<string>}
      */
     async profile_picture() {
         if (!this._profile_picture)

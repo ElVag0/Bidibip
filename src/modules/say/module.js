@@ -1,5 +1,5 @@
 // MODULE SAY
-const {CommandInfo} = require("../../utils/interaction")
+const {CommandInfo} = require("../../utils/interactionBase")
 const {Message} = require('../../utils/message')
 
 class Module {
@@ -16,7 +16,7 @@ class Module {
 
     /**
      * // When command is executed
-     * @param command {Interaction}
+     * @param command {InteractionBase}
      * @return {Promise<void>}
      */
     async server_interaction(command) {

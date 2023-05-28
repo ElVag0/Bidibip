@@ -1,5 +1,5 @@
 // MODULE ADVERTISING
-const {CommandInfo} = require("../../utils/interaction")
+const {CommandInfo} = require("../../utils/interactionBase")
 const CONFIG = require('../../config').get()
 const MODULE_MANAGER = require("../../core/module_manager")
 
@@ -10,25 +10,6 @@ const {InteractionRow} = require("../../utils/interaction_row");
 const {Channel} = require("../../utils/channel");
 
 const PENDING_REQUESTS= {}
-function receive_interaction_result(button_id, interaction_id, message) {
-    if (button_id === 'send') {
-        PENDING_REQUESTS[interaction_id].message.set_text('').set_client_only(false).send()
-        PENDING_REQUESTS[interaction_id].message.set_text('').set_client_only(false).set_channel(new Channel().set_id(CONFIG.SHARED_SHARED_CHANNEL))
-            .send()
-            .then(message => {
-                PENDING_REQUESTS[interaction_id].command.edit_reply(new Message()
-                    .set_text(`Ton annonce a bien été publiée : https://discord.com/channels/${CONFIG.SERVER_ID}/${message.channel()}/${message.id()}`))
-                    .catch(err => console.fatal(`failed to edit reply : ${err}`))
-                delete PENDING_REQUESTS[interaction_id]
-            })
-    } else {
-        PENDING_REQUESTS[interaction_id].command.delete_reply()
-            .catch(err => console.fatal(`Failed to delete reply ${err}`))
-        delete PENDING_REQUESTS[interaction_id]
-    }
-    return false
-}
-
 class Module {
     constructor(create_infos) {
         this.client = create_infos.client
@@ -62,7 +43,7 @@ class Module {
 
     /**
      * // When command is executed
-     * @param command {Interaction}
+     * @param command {InteractionBase}
      * @return {Promise<void>}
      */
     async server_interaction(command) {
@@ -88,9 +69,9 @@ class Module {
                                 .set_id('send')
                                 .set_label('Envoyer')
                                 .set_type(Button.Success))),
-                receive_interaction_result
-            ).then(id => {
-                PENDING_REQUESTS[id] = {
+            ).then(interaction => {
+                MODULE_MANAGER.get().bind_button(this, interaction, this.receive_interaction_result)
+                PENDING_REQUESTS[interaction.id()] = {
                     command: command,
                     message: this._build_paid(command).message.set_channel(new Channel().set_id(CONFIG.ADVERTISING_PAID_CHANNEL))
                 }
@@ -110,9 +91,9 @@ class Module {
                                 .set_id('send')
                                 .set_label('Envoyer')
                                 .set_type(Button.Success))),
-                receive_interaction_result
-            ).then(id => {
-                PENDING_REQUESTS[id] = {
+            ).then(interaction => {
+                MODULE_MANAGER.get().bind_button(this, interaction, this.receive_interaction_result)
+                PENDING_REQUESTS[interaction.id()] = {
                     command: command,
                     message: this._build_unpaid(command).set_channel(new Channel().set_id(CONFIG.ADVERTISING_UNPAID_CHANNEL))
                 }
@@ -139,14 +120,36 @@ class Module {
                                 .set_id('send')
                                 .set_label('Envoyer')
                                 .set_type(Button.Success))),
-                receive_interaction_result
-            ).then(id => {
-                PENDING_REQUESTS[id] = {
+            ).then(interaction => {
+                MODULE_MANAGER.get().bind_button(this, interaction, this.receive_interaction_result)
+                PENDING_REQUESTS[interaction.id()] = {
                     command: command,
                     message: this._build_freelance(command).message.set_channel(new Channel().set_id(CONFIG.ADVERTISING_FREELANCE_CHANNEL))
                 }
             })
         }
+    }
+
+    /**
+     * @param button_interaction {ButtonInteraction}
+     */
+    async receive_interaction_result(button_interaction) {
+        if (button_interaction.button_id() === 'send') {
+            PENDING_REQUESTS[button_interaction.base_id()].message.set_text('').set_client_only(false).send()
+            PENDING_REQUESTS[button_interaction.base_id()].message.set_text('').set_client_only(false).set_channel(new Channel().set_id(CONFIG.SHARED_SHARED_CHANNEL))
+                .send()
+                .then(message => {
+                    PENDING_REQUESTS[button_interaction.base_id()].command.edit_reply(new Message()
+                        .set_text(`Ton annonce a bien été publiée : https://discord.com/channels/${CONFIG.SERVER_ID}/${message.channel().id()}/${message.id()}`))
+                        .catch(err => console.fatal(`failed to edit reply : ${err}`))
+                    delete PENDING_REQUESTS[button_interaction.base_id()]
+                })
+        } else {
+            PENDING_REQUESTS[button_interaction.base_id()].command.delete_reply()
+                .catch(err => console.fatal(`Failed to delete reply ${err}`))
+            delete PENDING_REQUESTS[button_interaction.base_id()]
+        }
+        return false
     }
 
     _build_paid(command) {

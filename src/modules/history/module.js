@@ -19,13 +19,17 @@ class Module {
     async server_message_updated(old_message, new_message) {
         const author = await old_message.author()
         console.info(`Message updated [${await author.full_name()}] :\n${await old_message.text()}\nto\n${await new_message.text()}`)
+
+        const old_text = await old_message.text()
+        const new_text = await old_message.text()
+
         await new Message().set_channel(new Channel().set_id(CONFIG.LOG_CHANNEL_ID))
             .add_embed(
                 new Embed()
                     .set_title(`@${await author.full_name()} (${author.id()})`)
                     .set_description('Message modifié :')
-                    .add_field('ancien', (await old_message.text()).substring(0, 1024))
-                    .add_field('nouveau', (await new_message.text()).substring(0, 1024))
+                    .add_field('ancien', old_text.length <= 0 ? '[Message vide]' : old_text.substring(0, 1024))
+                    .add_field('nouveau', new_text.length <= 0 ? '[Message vide]' : new_text.substring(0, 1024))
             ).send().catch(err => console.fatal(`failed to send log message : ${err}`, err))
     }
 

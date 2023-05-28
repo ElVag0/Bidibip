@@ -230,6 +230,16 @@ class ModuleManager {
             })
         console.info(`saved module config to ${CONFIG.get().SAVE_DIR}/config/modules.json`)
     }
+
+    /**
+     * Bind a callback to given button
+     * @param module
+     * @param button {Message|InteractionBase} Message or interaction that contains the button
+     * @param callback
+     */
+    bind_button(module, button, callback) {
+        this._event_manager.bind_button(module, button, callback)
+    }
 }
 
 /**
