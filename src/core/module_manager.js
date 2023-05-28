@@ -143,7 +143,14 @@ class ModuleManager {
             module.enabled = true
             this._event_manager.bind(module)
             if (module.start)
-                module.start()
+                (async () => {
+                    await module.start()
+                        .catch(err => console.fatal(`failed to start module '${module_name}' : ${err}`))
+                })()
+                    .catch(err => {
+                        console.error(`Error on module.start() : ${err}`)
+                        module.enabled = false
+                    })
 
             console.validate(`Successfully enabled module '${module_name}'`)
         } else

@@ -25,7 +25,7 @@ class Module {
                 .set_channel(command.channel())
                 .set_text(command.read('message'))
                 .send()
-            command.skip()
+            await command.skip()
         }
     }
 }

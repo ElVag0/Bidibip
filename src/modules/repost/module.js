@@ -12,6 +12,8 @@ const {InteractionRow} = require("../../utils/interaction_row");
 
 class Module {
     constructor(create_infos) {
+        this.enabled = false
+
         this.client = create_infos.client
 
         this.commands = [
