@@ -95,6 +95,14 @@ class Message {
     }
 
     /**
+     * @returns {Message}
+     */
+    clear_attachments() {
+        this._attachments = []
+        return this
+    }
+
+    /**
      * Does this message contains any text or embed.js
      * @returns {boolean}
      */

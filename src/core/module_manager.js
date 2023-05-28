@@ -20,8 +20,15 @@ class ModuleManager {
         // Load configuration
         if (!fs.existsSync(CONFIG.get().SAVE_DIR + '/config/modules.json'))
             this._config_data = {}
-        else
-            this._config_data = JSON.parse(fs.readFileSync(CONFIG.get().SAVE_DIR + '/config/modules.json', 'utf8'))
+        else {
+            try {
+                this._config_data = JSON.parse(fs.readFileSync(CONFIG.get().SAVE_DIR + '/config/modules.json', 'utf8'))
+            }
+            catch (err) {
+                console.error(`Failed to read config json : ${err}`)
+                this._config_data = {}
+            }
+        }
 
         // Init modules with new client
         this._client = discord_client

@@ -43,8 +43,7 @@ async function format_message(message) {
 function extract_images(initial_text) {
     const split = initial_text.split(/\r\n|\r|\n| /)
     const attachments = []
-    for (let i = split.length - 1; i >= 0; --i)
-    {
+    for (let i = split.length - 1; i >= 0; --i) {
         if (split[i].includes('http') && /\.(jpg|jpeg|png|webp|avif|gif)$/.test(split[i].toLowerCase())) {
             attachments.push(new Attachment().set_file(split[i]))
             split.splice(i, 1)
@@ -202,19 +201,38 @@ class Module {
 
                 const reposted_message = (await format_message(message))
                     .set_text(`Mise à jour dans https://discord.com/channels/${CONFIG.get().SERVER_ID}/${message.channel().id()}/${message.id()}`)
-                    .add_interaction_row(new InteractionRow()
-                        .add_button(new Button()
-                            .set_label('Viens donc voir !')
-                            .set_type(Button.Link)
-                            .set_url(`https://discord.com/channels/${CONFIG.get().SERVER_ID}/${message.channel().id()}/${message.id()}`)))
 
                 for (const attachment of message.attachments())
                     reposted_message.add_attachment(attachment)
+
+                const attachments = reposted_message.attachments()
+                reposted_message.clear_attachments()
+
+                if (attachments.length === 0)
+                    reposted_message.add_interaction_row(new InteractionRow()
+                    .add_button(new Button()
+                        .set_label('Viens donc voir !')
+                        .set_type(Button.Link)
+                        .set_url(`https://discord.com/channels/${CONFIG.get().SERVER_ID}/${message.channel().id()}/${message.id()}`)))
 
                 for (const channel of this.repost_data.repost_links[(await message.channel().parent_channel()).id()].repost_channels) {
                     await reposted_message
                         .set_channel(new Channel().set_id(channel))
                         .send()
+                    if (attachments.length !== 0) {
+                        const attachment_post = new Message()
+                            .set_text('Regardes moi ça si c\'est pas beau !')
+                            .set_channel(new Channel().set_id(channel))
+                            .add_interaction_row(new InteractionRow()
+                                .add_button(new Button()
+                                    .set_label('Viens donc voir !')
+                                    .set_type(Button.Link)
+                                    .set_url(`https://discord.com/channels/${CONFIG.get().SERVER_ID}/${message.channel().id()}/${message.id()}`)))
+
+                        for (const attachment of attachments)
+                            attachment_post.add_attachment(attachment)
+                        await attachment_post.send()
+                    }
                 }
 
                 command.reply(new Message().set_client_only().set_text('Ton post a été promu !'))
