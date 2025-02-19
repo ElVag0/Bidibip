@@ -1,20 +1,15 @@
-use std::fmt::{Debug, Display};
 use chrono::{DateTime, Utc};
-use serenity::all::{ChannelId, CreateEmbed, CreateMessage, Http, MessageBuilder};
+use serenity::all::{ChannelId, Http};
+use std::fmt::{Debug};
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use serenity::FutureExt;
-use serenity::futures::TryFutureExt;
-use serenity::model::Color;
-use tracing::{Level, Subscriber};
 use tracing::field::Field;
-use tracing::metadata::LevelFilter;
+use tracing::{Level, Subscriber};
+use tracing_subscriber::field::Visit;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, Layer};
-use tracing_subscriber::field::Visit;
 
 pub struct DiscordLogConnector {
     connected_log_channel: RwLock<Option<(Arc<Http>, ChannelId)>>,
@@ -38,7 +33,7 @@ pub struct ChannelWriter {
 
 pub struct FieldMessageVisitor(String);
 impl Visit for FieldMessageVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+    fn record_debug(&mut self, _: &Field, value: &dyn Debug) {
         self.0 = format!("{value:?}");
     }
 }
@@ -65,13 +60,13 @@ where
                 tokio::spawn(async move {
                     match level {
                         Level::INFO => {
-                            channel.say(&http,format!(":green_circle: `{target}{line}` {}", visitor.0)).await;
+                            channel.say(&http,format!(":green_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send info log");
                         }
                         Level::WARN => {
-                            channel.say(&http,format!(":yellow_circle: `{target}{line}` {}", visitor.0)).await;
+                            channel.say(&http,format!(":yellow_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send warning log");
                         }
                         Level::ERROR => {
-                            channel.say(&http, format!(":red_circle: `{target}{line}` {}", visitor.0)).await;
+                            channel.say(&http, format!(":red_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send error log");
                         }
                         _ => {}
                     }

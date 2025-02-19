@@ -1,31 +1,44 @@
-use std::collections::HashMap;
-use std::ops::Deref;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use serenity::all::{ChannelId, Command, CommandPermissions, Context, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Interaction, Ready};
-use serenity::builder::Builder;
+use serenity::all::{ChannelId, Context, GuildId, Interaction, Ready};
 use serenity::prelude::EventHandler;
-use tokio::sync::RwLock;
 use tracing::{error, info};
 use crate::core::config::Config;
 use crate::core::logger::DiscordLogConnector;
-use crate::modules::{load_modules, Module};
+use crate::modules::{load_modules, BidibipModule};
 
 pub struct GlobalInterface {
     config: Arc<Config>,
-    modules: Vec<Box<dyn Module>>,
+    modules: Vec<ModuleData>,
     log_connector: Arc<DiscordLogConnector>
+}
+
+struct ModuleData {
+    module: Box<dyn BidibipModule>,
+    commands: HashSet<String>
 }
 
 impl GlobalInterface {
     pub fn new(config: Arc<Config>, log_connector: Arc<DiscordLogConnector>) -> Self {
-        Self { config:config.clone(), modules: load_modules(config), log_connector }
+        let mut modules = vec![];
+        for module in load_modules(config.clone()) {
+            let mut commands = HashSet::new();
+            for command in module.fetch_commands() {
+                commands.insert(command.0);
+            }
+
+            modules.push(ModuleData{module, commands})
+        }
+
+
+        Self { config:config.clone(), modules, log_connector }
     }
 
     pub async fn update_commands(&self, ctx: &Context) {
         let mut commands = HashMap::new();
 
         for module in &self.modules {
-            for (name, command) in module.fetch_command() {
+            for (name, command) in module.module.fetch_commands() {
                 commands.insert(name.clone(), command.name(name));
             }
         }
@@ -60,17 +73,24 @@ impl EventHandler for GlobalInterface {
         self.update_commands(&ctx).await;
 
         for module in &self.modules {
-            module.ready(ctx.clone(), ready.clone()).await;
-            info!("Initialized module {}", module.name());
+            module.module.ready(ctx.clone(), ready.clone()).await;
+            info!("Initialized module {}", module.module.name());
         }
 
         info!("Je suis prêt à botter des culs ! >:)");
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-
         for module in &self.modules {
-            module.interaction_create(ctx.clone(), interaction.clone()).await;
+            module.module.interaction_create(ctx.clone(), interaction.clone()).await;
+        }
+
+        if let Interaction::Command(command) = interaction {
+            for module in &self.modules {
+                if module.commands.contains(&command.data.name) {
+                    module.module.execute_command(ctx.clone(), command.data.name.as_str(), command.clone()).await;
+                }
+            }
         }
     }
 }
