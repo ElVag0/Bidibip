@@ -22,7 +22,7 @@ class Module extends ModuleBase {
 
         // Command declaration
         this.commands = [
-            new CommandInfo('modules_infos', 'Informations sur les modules', this.modules_infos)
+            new CommandInfo('modules_infos', 'Informations sur les native_modules', this.modules_infos)
                 .set_admin_only(),
             new CommandInfo('set_module_enabled', 'Active ou desactive un module', this.set_module_enabled)
                 .add_text_option('nom', 'nom du module')
@@ -84,7 +84,7 @@ class Module extends ModuleBase {
         const embed = new Embed()
             .set_title('modules')
             .set_color('#0000FF')
-            .set_description('liste des modules disponibles')
+            .set_description('liste des native_modules disponibles')
 
         for (const module of MODULE_MANAGER.all_modules_info())
             embed.add_field(module.name, `chargé : ${module.loaded ? ':white_check_mark:' : ':x:'}\tactivé : ${module.enabled ? ':white_check_mark:' : ':x:'}`)

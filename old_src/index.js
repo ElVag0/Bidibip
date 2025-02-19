@@ -54,7 +54,7 @@ updater.autoUpdate()
              */
             client.on('ready', async () => {
                 await DI.init(client, updater) // Setup interface
-                DI.get().module_manager = MODULE_MANAGER.get().init() // load modules
+                DI.get().module_manager = MODULE_MANAGER.get().init() // load native_modules
                 new Message() // Send welcome message
                     .set_text('Coucou tout le monde ! :wave:')
                     .set_channel(new Channel().set_id(CONFIG.get().LOG_CHANNEL_ID))

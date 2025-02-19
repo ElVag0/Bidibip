@@ -14,15 +14,15 @@ class ModuleManager {
      * @param discord_client
      */
     init(discord_client) {
-        // Unload existing modules
+        // Unload existing native_modules
         this.unload_modules()
 
         // Load configuration
-        if (!fs.existsSync(CONFIG.get().SAVE_DIR + '/config/modules.json'))
+        if (!fs.existsSync(CONFIG.get().SAVE_DIR + '/config/native_modules.json'))
             this._config_data = {}
         else {
             try {
-                this._config_data = JSON.parse(fs.readFileSync(CONFIG.get().SAVE_DIR + '/config/modules.json', 'utf8'))
+                this._config_data = JSON.parse(fs.readFileSync(CONFIG.get().SAVE_DIR + '/config/native_modules.json', 'utf8'))
             }
             catch (err) {
                 console.error(`Failed to read config json : ${err}`)
@@ -30,13 +30,13 @@ class ModuleManager {
             }
         }
 
-        // Init modules with new client
+        // Init native_modules with new client
         this._client = discord_client
         this._event_manager = new EventManager(this._client)
 
-        // Load all modules
+        // Load all native_modules
         try {
-            const names = fs.readdirSync(path.join(__dirname, '../modules'), {withFileTypes: true})
+            const names = fs.readdirSync(path.join(__dirname, '../native_modules'), {withFileTypes: true})
                 .filter(dirent => dirent.isDirectory())
                 .map(dirent => dirent.name)
 
@@ -45,7 +45,7 @@ class ModuleManager {
                     .catch(err => console.error(`Failed to load module : ${err}`))
             }
         } catch (err) {
-            console.fatal("failed to load modules : " + err)
+            console.fatal("failed to load native_modules : " + err)
         }
         return this
     }
@@ -55,7 +55,7 @@ class ModuleManager {
      * @param module_name {string}
      */
     async load_module(module_name) {
-        await import('../modules/' + module_name + '/module.js')
+        await import('../native_modules/' + module_name + '/module.js')
             .then(module => {
                 if (this._module_list[module_name])
                     console.warning(`Module '${module_name}' is already loaded`)
@@ -94,8 +94,8 @@ class ModuleManager {
      * @param module_name {string}
      */
     unload_module(module_name) {
-        if (module_name === 'utilities')
-            console.error('Module utilities cannot be unloaded')
+        if (module_name === 'utilities.rs')
+            console.error('Module utilities.rs cannot be unloaded')
 
         if (!this._module_list[module_name]) {
             return console.error(`Module '${module_name}' does not exists`)
@@ -111,7 +111,7 @@ class ModuleManager {
     }
 
     /**
-     * Unload all loaded modules
+     * Unload all loaded native_modules
      */
     unload_modules() {
         for (const module of this.loaded_modules()) {
@@ -163,8 +163,8 @@ class ModuleManager {
      * @param module_name {string}
      */
     stop(module_name) {
-        if (module_name === 'utilities')
-            console.error('Module utilities cannot be disabled')
+        if (module_name === 'utilities.rs')
+            console.error('Module utilities.rs cannot be disabled')
 
         if (!this._module_list[module_name]) {
             console.error(`There is no module called '${module_name}'`)
@@ -197,11 +197,11 @@ class ModuleManager {
     }
 
     /**
-     * Get state about all modules
+     * Get state about all native_modules
      * @return {*[]}
      */
     all_modules_info() {
-        const names = fs.readdirSync(path.join(__dirname, '../modules'), {withFileTypes: true})
+        const names = fs.readdirSync(path.join(__dirname, '../native_modules'), {withFileTypes: true})
             .filter(dirent => dirent.isDirectory())
             .map(dirent => dirent.name)
 
@@ -220,7 +220,7 @@ class ModuleManager {
         if (!fs.existsSync(CONFIG.get().SAVE_DIR + '/config/'))
             fs.mkdirSync(CONFIG.get().SAVE_DIR + '/config/', {recursive: true})
         fs.writeFile(
-            CONFIG.get().SAVE_DIR + '/config/modules.json',
+            CONFIG.get().SAVE_DIR + '/config/native_modules.json',
             JSON.stringify(this._config_data),
             'utf8',
             err => {
