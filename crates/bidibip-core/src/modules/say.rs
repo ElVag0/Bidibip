@@ -1,8 +1,11 @@
-use crate::modules::{CommandHelper, BidibipModule, OptionHelper, ResultDebug};
+use serde::{Deserialize, Serialize};
+use crate::modules::{BidibipModule};
 use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommand, CreateCommandOption, EventHandler, ResolvedValue};
-use crate::core::utilities::json_to_message;
+use crate::core::utilities::{json_to_message, CommandHelper, OptionHelper, ResultDebug};
 
-pub struct Say;
+#[derive(Serialize, Deserialize)]
+pub struct Say {
+}
 
 #[serenity::async_trait]
 impl BidibipModule for Say {

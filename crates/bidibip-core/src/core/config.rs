@@ -1,21 +1,57 @@
+use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use crate::modules::BidibipModule;
 use anyhow::Error;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use tracing::warn;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Roles {
+    pub support: u64,
+    pub member: u64,
+    pub helper: u64,
+    pub administrator: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Channels {
+    pub log_channel: u64, // Where everything is printed
+    pub staff_channel: u64, // The channel I should use to tell something important to the moderator team
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub token: String,
     pub server_id: u64,
-    pub log_channel: u64
+    pub application_id: u64,
+    pub log_directory: PathBuf,
+    pub module_config_directory: PathBuf,
+    pub disabled_modules: Vec<String>,
+    pub channels: Channels,
+    pub roles: Roles,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            token: "PLEASE FILL APP TOKEN".to_string(),
+            token: "PLEASE FILL APP TOKEN FIRST".to_string(),
             server_id: 0,
-            log_channel: 0,
+            application_id: 0,
+            log_directory: PathBuf::from("saved/logs"),
+            module_config_directory: PathBuf::from("saved/config"),
+            disabled_modules: vec![],
+            channels: Channels {
+                log_channel: 0,
+                staff_channel: 0,
+            },
+            roles: Roles {
+                support: 0,
+                member: 0,
+                helper: 0,
+                administrator: 0,
+            },
         }
     }
 }
@@ -23,11 +59,41 @@ impl Default for Config {
 impl Config {
     pub fn from_file(path: PathBuf) -> Result<Self, Error> {
         if path.exists() {
-            Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
-        }
-        else {
+            let config: Config = serde_json::from_str(&fs::read_to_string(path)?)?;
+
+            assert_ne!(config.application_id, 0, "Invalid application id in config");
+            assert_ne!(config.server_id, 0, "Invalid server id in config");
+            assert_ne!(config.roles.member, 0, "Invalid member role id in config");
+            assert_ne!(config.roles.administrator, 0, "Invalid administrator role id in config");
+            assert_ne!(config.roles.helper, 0, "Invalid helper role id in config");
+            assert_ne!(config.channels.staff_channel, 0, "Invalid staff channel id in config");
+            assert_ne!(config.channels.log_channel, 0, "Invalid staff channel id in config");
+
+            Ok(config)
+        } else {
             fs::write(path.clone(), serde_json::to_string_pretty(&Config::default())?)?;
             Err(Error::msg(format!("Created a new config file at {}. Please fill in information first", path.to_str().unwrap())))
         }
+    }
+
+    pub fn load_module_config<T: BidibipModule, C: Serialize + DeserializeOwned + Default>(&self, module: &T) -> Result<C, Error> {
+        fs::create_dir_all(&self.module_config_directory)?;
+
+        let config_file = self.module_config_directory.join(format!("{}_config.json", module.name()));
+
+        if !fs::exists(&config_file)? {
+            // Create log files and channels
+            fs::write(&config_file, serde_json::to_string_pretty(&C::default())?)?;
+            warn!("Initialized config file for module {} to {config_file:?}", module.name());
+        }
+
+        Ok(serde_json::from_str(&fs::read_to_string(&config_file)?)?)
+    }
+
+    pub fn save_module_config<T: BidibipModule, C: Serialize + DeserializeOwned>(&self, module: &T, config: &C) -> Result<(), Error> {
+        fs::create_dir_all(&self.module_config_directory)?;
+        let config_file = self.module_config_directory.join(format!("{}_config.json", module.name()));
+        fs::write(&config_file, serde_json::to_string_pretty(config)?)?;
+        Ok(())
     }
 }

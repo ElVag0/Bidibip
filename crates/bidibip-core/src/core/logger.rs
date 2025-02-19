@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serenity::all::{ChannelId, Http};
+use serenity::all::{ChannelId, Http, Mentionable, RoleId};
 use std::fmt::{Debug};
 use std::fs;
 use std::fs::OpenOptions;
@@ -10,6 +10,7 @@ use tracing::{Level, Subscriber};
 use tracing_subscriber::field::Visit;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, Layer};
+use crate::core::config::Config;
 
 pub struct DiscordLogConnector {
     connected_log_channel: RwLock<Option<(Arc<Http>, ChannelId)>>,
@@ -29,6 +30,7 @@ impl DiscordLogConnector {
 
 pub struct ChannelWriter {
     connector: Arc<DiscordLogConnector>,
+    config: Arc<Config>,
 }
 
 pub struct FieldMessageVisitor(String);
@@ -49,24 +51,25 @@ where
             if level == Level::INFO || level == Level::WARN || level == Level::ERROR {
                 let target = event.metadata().target().to_string();
                 let line = match event.metadata().line() {
-                    None => {String::new()}
-                    Some(line) => {format!(":{line}")}
+                    None => { String::new() }
+                    Some(line) => { format!(":{line}") }
                 };
-                
+
                 let mut visitor = FieldMessageVisitor(String::new());
                 event.record(&mut visitor);
                 let http = http.clone();
-                let channel = channel.clone();
+                let channel = *channel;
+                let support_role = self.config.roles.support;
                 tokio::spawn(async move {
                     match level {
                         Level::INFO => {
-                            channel.say(&http,format!(":green_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send info log");
+                            channel.say(&http, format!(":green_circle: `{target}{line}` {}", &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send info log");
                         }
                         Level::WARN => {
-                            channel.say(&http,format!(":yellow_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send warning log");
+                            channel.say(&http, format!(":yellow_circle: `{target}{line}` {}", &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send warning log");
                         }
                         Level::ERROR => {
-                            channel.say(&http, format!(":red_circle: `{target}{line}` {}", visitor.0)).await.expect("Failed to send error log");
+                            channel.say(&http, format!(":red_circle: `{target}{line}` {} {}", RoleId::from(support_role).mention(), &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send error log");
                         }
                         _ => {}
                     }
@@ -76,7 +79,8 @@ where
     }
 }
 
-pub fn init_logger(log_directory: &Path) -> Arc<DiscordLogConnector> {
+pub fn init_logger(config: Arc<Config>) -> Arc<DiscordLogConnector> {
+    let log_directory = &config.log_directory;
 
     // Create log directory
     fs::create_dir_all(log_directory).expect("Failed to create log directories");
@@ -132,7 +136,7 @@ pub fn init_logger(log_directory: &Path) -> Arc<DiscordLogConnector> {
         )
         .with(
             // log to discord channels
-            ChannelWriter { connector: connector.clone() }
+            ChannelWriter { connector: connector.clone(), config }
         );
 
     tracing::subscriber::set_global_default(subscriber).expect("Failed to initialize tracing subscriber");

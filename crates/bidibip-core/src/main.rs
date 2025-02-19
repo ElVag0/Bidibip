@@ -12,16 +12,16 @@ use crate::core::module::GlobalInterface;
 
 #[tokio::main]
 async fn main() {
-    let log_connector = core::logger::init_logger(Path::new("saved/log"));
-
     // Open Config
     let config = match Config::from_file(env::current_exe().expect("Failed to find executable path").parent().unwrap().join("config.json")) {
         Ok(config) => { Arc::new(config) }
         Err(error) => {
-            error!("Failed to load config : {}", error);
+            println!("Failed to load config : {}", error);
             return;
         }
     };
+    let log_connector = core::logger::init_logger(config.clone());
+
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents =
@@ -39,7 +39,7 @@ async fn main() {
     }
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&config.token, intents).event_handler(GlobalInterface::new(config, log_connector)).await.expect("Failed to create client");
+    let mut client = Client::builder(&config.token, intents).event_handler(GlobalInterface::new(config, log_connector).await).await.expect("Failed to create client");
 
     // Start listening for events by starting a single shard
     if let Err(why) = client.start().await {
