@@ -50,6 +50,7 @@ where
 
             if level == Level::INFO || level == Level::WARN || level == Level::ERROR {
                 let target = event.metadata().target().to_string();
+                if target == "log" { return; }
                 let line = match event.metadata().line() {
                     None => { String::new() }
                     Some(line) => { format!(":{line}") }
@@ -133,6 +134,7 @@ pub fn init_logger(config: Arc<Config>) -> Arc<DiscordLogConnector> {
             fmt::layer()
                 .json()
                 .with_writer(debug_file)
+                .with_filter(tracing_subscriber::filter::LevelFilter::from_level(Level::INFO))
         )
         .with(
             // log to discord channels

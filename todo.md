@@ -4,10 +4,11 @@
 - implementer le mute du vocal
   - Ajouter le prune
 
+# modo
+
 # Say
 
 Implémenter le Json to message
-
 
 # History
 
@@ -21,7 +22,6 @@ Implémenter le Json to message
 > - Advertising2
 > - anti-spam
 > - help
-> - modo
 > - quote
 > - reglement
 > - repost 

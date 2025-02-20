@@ -100,7 +100,7 @@ impl EventHandler for GlobalInterface {
 
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
         for module in &self.modules {
-            module.module.message_delete(ctx.clone(), channel_id, deleted_message_id.clone(), guild_id).await;
+            module.module.message_delete(ctx.clone(), channel_id, deleted_message_id, guild_id).await;
         }
     }
 

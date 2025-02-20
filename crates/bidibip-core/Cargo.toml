@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 chrono = "0.4.39"
-serenity = { version = "0.12.4", features = ["chrono"] }
+serenity = { version = "0.12.4" }
 serde = { version = "1.0.217" }
 serde_json = "1.0.138"
 tracing = "0.1.40"

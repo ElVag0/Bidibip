@@ -25,8 +25,10 @@ pub trait BidibipModule: Sync + Send + EventHandler {
 pub async fn load_modules(config: Arc<Config>) -> Vec<Box<dyn BidibipModule>> {
     let mut modules: Vec<Box<dyn BidibipModule>> = vec![];
 
+    // SAY
     modules.push(Box::new(say::Say {}));
 
+    // WARN
     match Warn::new(config.clone()).await {
         Ok(module) => {
             modules.push(Box::new(module))
@@ -34,7 +36,11 @@ pub async fn load_modules(config: Arc<Config>) -> Vec<Box<dyn BidibipModule>> {
         Err(err) => { error!("Failed to load warn module : {err}") }
     }
 
+    // LOG
     modules.push(Box::new(log::Log {}));
+
+    // HISTORY
+    modules.push(Box::new(history::History::new(config.clone())));
 
     modules
 }
