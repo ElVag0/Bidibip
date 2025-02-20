@@ -40,10 +40,6 @@ impl Username {
     pub fn safe_full(&self) -> String {
         format!("{} | {}", self.server_name, self.handle)
     }
-
-    pub fn mention(&self) -> String {
-        UserId::from(self.id).mention().to_string()
-    }
 }
 
 
@@ -68,7 +64,7 @@ impl CommandHelper for CommandInteraction {
 
 pub trait ModalHelper {
     async fn close(&self, http: &Arc<Http>) -> bool;
-    async fn respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T);
+    async fn _respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T);
 }
 impl ModalHelper for ModalInteraction {
     async fn close(&self, http: &Arc<Http>) -> bool {
@@ -77,7 +73,7 @@ impl ModalHelper for ModalInteraction {
         } else { true }
     }
 
-    async fn respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T) {
+    async fn _respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T) {
         self.create_response(http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!(":boom: **Mince alors !**\n{message}")))).await.on_fail("Failed to send command user error response");
     }
 }

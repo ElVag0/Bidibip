@@ -2,7 +2,6 @@ mod core;
 mod modules;
 
 use std::{env};
-use std::path::{Path};
 use std::sync::Arc;
 use serenity::all::token::validate;
 use serenity::prelude::*;
@@ -40,7 +39,7 @@ async fn main() {
 
     // Create a new instance of the Client, logging in as a bot.
     let mut client = Client::builder(&config.token, intents).event_handler(GlobalInterface::new(config, log_connector).await).await.expect("Failed to create client");
-
+    client.cache.set_max_messages(10000);
     // Start listening for events by starting a single shard
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");

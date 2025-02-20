@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
 use anyhow::Error;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::modules::{BidibipModule};
-use serenity::all::{ActionRowComponent, AuditLogEntry, ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, CommandType, ComponentInteractionDataKind, Context, CreateButton, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, CreateSelectMenu, EditInteractionResponse, EventHandler, GuildId, Http, InputTextStyle, Interaction, Member, MemberAction, Mentionable, MessageInteractionMetadata, ResolvedValue, RoleId, User, UserId};
+use serenity::all::{ActionRowComponent, AuditLogEntry, ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, CommandType, Context, CreateButton, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, EventHandler, GuildId, Http, InputTextStyle, Interaction, Member, MemberAction, Mentionable, ResolvedValue, RoleId, User, UserId};
 use serenity::all::audit_log::Action;
-use serenity::builder::{CreateActionRow, CreateEmbed, CreateInputText, CreateSelectMenuKind};
+use serenity::builder::{CreateActionRow, CreateEmbed, CreateInputText};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{error, info, warn};
+use tracing::{error};
 use crate::core::config::Config;
 use crate::core::utilities::{ModalHelper, OptionHelper, ResultDebug, Username};
 
@@ -178,7 +178,7 @@ impl Warn {
         let mut write_config = self.warn_config.write().await;
 
         let warn_channel = write_config.warn_channel;
-        let mut warn_list = &mut write_config.warns.entry(warn_data.to.id()).or_default().warns;
+        let warn_list = &mut write_config.warns.entry(warn_data.to.id()).or_default().warns;
         let mut embed = CreateEmbed::new()
             .title(warn_data.action.clone())
             .description(warn_data.reason.clone());
@@ -217,8 +217,6 @@ impl Warn {
 
 
         if affect_user {
-            let id = UserId::from(warn_data.to.id());
-
             match UserId::from(warn_data.to.id()).to_user(http).await {
                 Ok(user) => {
                     if let Some(member) = user.member {

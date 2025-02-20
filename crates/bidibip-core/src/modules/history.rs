@@ -1,9 +1,8 @@
 use std::sync::Arc;
-use serenity::all::{audit_log, AuditLogEntry, ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Member, Message, MessageAction, MessageId, MessageUpdateEvent, User, UserId};
+use serenity::all::{ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent, UserId};
 use serenity::all::audit_log::Action;
 use serenity::builder::CreateEmbed;
-use tracing::{error, info, warn};
-use tracing::log::log;
+use tracing::{error, info};
 use crate::core::config::Config;
 use crate::core::utilities::{ResultDebug, Username};
 use crate::modules::BidibipModule;
@@ -21,82 +20,76 @@ impl History {
 
 #[serenity::async_trait]
 impl EventHandler for History {
-    async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, guild_id: GuildId) {
-        if let Action::Message(message) = entry.action {
-            match message {
-                MessageAction::Delete => {
-                    warn!("AUDIT delete message");
-                }
-                MessageAction::BulkDelete => {
-                    warn!("AUDIT delete message bulk");
-                }
-                _ => {}
-            }
-        }
-    }
-
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
+        let date = deleted_message_id.created_at().format("%d %B %Y");
+        let mut old_message_content = format!("Ancien message : {}", deleted_message_id.link(channel_id, guild_id));
+        let mut user = None;
         if let Some(deleted) = ctx.cache.message(channel_id, deleted_message_id) {
-            info!("OK J'AI LE CACHE {:?}", deleted.content);
+            if !deleted.content.is_empty() {
+                old_message_content = deleted.content.clone()
+            } else if !deleted.attachments.is_empty() {
+                let mut str = String::new();
+                for attachment in &deleted.attachments {
+                    str += format!("{} ", attachment.url).as_str();
+                }
+                old_message_content = str;
+            }
+            user = Some(deleted.author.clone());
         }
 
-
-        let mut user = None;
-        let mut from = None;
-        let mut text = String::new();
-
-
-        if let Some(guild) = guild_id {
-            match guild.audit_logs(&ctx.http, Some(Action::Message(MessageAction::Delete)), None, None, Some(1)).await {
-                Ok(res) => {
-                    if let Some(entry) = res.entries.first() {
-                        match UserId::from(entry.user_id.get()).to_user(&ctx.http).await {
-                            Ok(found_user) => {
-                                from = Some(found_user);
-                            }
-                            Err(err) => { error!("Failed to get deleted message user : {}", err) }
-                        }
-                        warn!("test : {:?}", entry);
-
-                        if let Some(target) = entry.target_id {
-                            match UserId::from(target.get()).to_user(&ctx.http).await {
+        if user.is_some() {
+            let mut by = None;
+            if let Some(guild) = guild_id {
+                match guild.audit_logs(&ctx.http, Some(Action::Message(MessageAction::Delete)), None, None, Some(1)).await {
+                    Ok(res) => {
+                        if let Some(entry) = res.entries.first() {
+                            match UserId::from(entry.user_id.get()).to_user(&ctx.http).await {
                                 Ok(found_user) => {
-                                    user = Some(found_user);
+                                    by = Some(found_user);
                                 }
-                                Err(err) => { error!("Failed to get deleted message action user : {}", err) }
+                                Err(err) => { error!("Failed to get deleted message user : {}", err) }
                             }
                         }
                     }
+                    Err(error) => { error!("Failed to fetch audit logs {}", error) }
                 }
-                Err(error) => { error!("Failed to fetch audit logs {}", error) }
             }
+
+
+            let user_name = match &user {
+                None => { "Unknown user".to_string() }
+                Some(user) => {
+                    format!("{} ({})", Username::from_user(user).safe_full(), user.id)
+                }
+            };
+
+            let from_name = match &by {
+                None => { "Unknown user".to_string() }
+                Some(user) => {
+                    format!("{} ({})", Username::from_user(user).safe_full(), user.id)
+                }
+            };
+            ChannelId::from(self.config.channels.log_channel).send_message(
+                &ctx.http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .color(Colour::RED)
+                        .title(format!("Message du {} supprimé par {}", date, from_name))
+                        .description(deleted_message_id.link(channel_id, guild_id))
+                        .field(format!("de : {}", &user_name), &old_message_content, false))).await.on_fail("Failed to print message rename log");
+
+            info!(target: "log","Message {} de {} du {} supprimé par {} : {}", deleted_message_id.link(channel_id, guild_id), user_name, date, from_name, old_message_content);
+        } else {
+            ChannelId::from(self.config.channels.log_channel).send_message(
+                &ctx.http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .color(Colour::RED)
+                        .title(format!("Ancien message du {} supprimé", date))
+                        .description(deleted_message_id.link(channel_id, guild_id)))).await.on_fail("Failed to print message rename log");
+
+            info!(target: "log","Ancien message du {} supprimé : {}", date, deleted_message_id.link(channel_id, guild_id));
         }
-
-        let user_name = match &user {
-            None => { "Unknown user".to_string() }
-            Some(user) => {
-                format!("{} ({})", Username::from_user(user).safe_full(), user.id)
-            }
-        };
-
-        let from_name = match &from {
-            None => { "Unknown user".to_string() }
-            Some(user) => {
-                format!("{} ({})", Username::from_user(user).safe_full(), user.id)
-            }
-        };
-
-
-        let embed = CreateEmbed::new()
-            .color(Colour::RED)
-            .title(&user_name)
-            .description(format!("Message supprimé par {}", from_name));
-
-        ChannelId::from(self.config.channels.log_channel).send_message(
-            &ctx.http,
-            CreateMessage::new().embed(embed)).await.on_fail("Failed to print message rename log");
-
-        info!(target: "log","Message de {} supprimé par {}", user_name, from_name);
     }
 
     async fn message_update(&self, ctx: Context, old_if_available: Option<Message>, new: Option<Message>, event: MessageUpdateEvent) {

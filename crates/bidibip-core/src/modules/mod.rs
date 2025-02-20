@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use anyhow::Error;
 use serenity::all::{CommandInteraction, Context, CreateCommand, EventHandler};
 use tracing::error;
 use crate::core::config::Config;

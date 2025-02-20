@@ -10,11 +10,10 @@
 
 Implémenter le Json to message
 
-# History
-
 ## Implemented
 
 > - log
+> - History
 
 ## Not implemented :
 
