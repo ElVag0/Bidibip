@@ -38,8 +38,8 @@ async fn main() {
     }
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client = Client::builder(&config.token, intents).event_handler(GlobalInterface::new(config, log_connector).await).await.expect("Failed to create client");
-    client.cache.set_max_messages(10000);
+    let mut client = Client::builder(&config.token, intents).event_handler(GlobalInterface::new(config.clone(), log_connector).await).await.expect("Failed to create client");
+    client.cache.set_max_messages(config.cache_message_size);
     // Start listening for events by starting a single shard
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");

@@ -17,7 +17,6 @@ impl History {
     }
 }
 
-
 #[serenity::async_trait]
 impl EventHandler for History {
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {

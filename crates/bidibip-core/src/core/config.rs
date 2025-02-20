@@ -30,6 +30,7 @@ pub struct Config {
     pub disabled_modules: Vec<String>,
     pub channels: Channels,
     pub roles: Roles,
+    pub cache_message_size: usize
 }
 
 impl Default for Config {
@@ -51,6 +52,7 @@ impl Default for Config {
                 helper: 0,
                 administrator: 0,
             },
+            cache_message_size: 10000,
         }
     }
 }

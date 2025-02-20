@@ -8,6 +8,7 @@ mod say;
 mod warn;
 mod log;
 mod history;
+mod modo;
 
 #[serenity::async_trait]
 pub trait BidibipModule: Sync + Send + EventHandler {
@@ -40,6 +41,14 @@ pub async fn load_modules(config: Arc<Config>) -> Vec<Box<dyn BidibipModule>> {
 
     // HISTORY
     modules.push(Box::new(history::History::new(config.clone())));
+
+    // MODO
+    match modo::Modo::new(config.clone()).await {
+        Ok(module) => {
+            modules.push(Box::new(module))
+        }
+        Err(err) => { error!("Failed to load modo module : {err}") }
+    }
 
     modules
 }

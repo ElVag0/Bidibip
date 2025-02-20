@@ -20,7 +20,7 @@ pub struct Warn {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-pub struct WarnConfig {
+struct WarnConfig {
     warn_channel: u64,
     // Key is user id
     warns: HashMap<u64, WarnedUserList>,
