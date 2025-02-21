@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonKind, ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
+use serenity::all::{ButtonStyle, CommandInteraction, ComponentInteraction, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
 use serenity::builder::CreateEmbed;
 use tracing::error;
 
@@ -124,15 +124,26 @@ impl CommandHelper for CommandInteraction {
 }
 
 
+impl CommandHelper for ComponentInteraction {
+    async fn skip(&self, http: &Arc<Http>) -> bool {
+        if self.defer(http).await.on_fail("Failed to defer command interaction") {
+            self.delete_response(http).await.on_fail("Failed to delete command interaction");
+            false
+        } else { true }
+    }
+
+    async fn respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T) {
+        self.create_response(http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!(":boom: **Mince alors !**\n{message}")))).await.on_fail("Failed to send command user error response");
+    }
+}
+
 pub trait ModalHelper {
     async fn close(&self, http: &Arc<Http>) -> bool;
     async fn _respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T);
 }
 impl ModalHelper for ModalInteraction {
     async fn close(&self, http: &Arc<Http>) -> bool {
-        if self.defer(http).await.on_fail("Failed to close modal interaction") {
-            false
-        } else { true }
+        !self.defer(http).await.on_fail("Failed to close modal interaction")
     }
 
     async fn _respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T) {

@@ -3,13 +3,14 @@ use std::sync::{Arc};
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::modules::{BidibipModule, CreateCommandDetailed};
-use serenity::all::{ActionRowComponent, AuditLogEntry, ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, CommandType, Context, CreateButton, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, EventHandler, GuildId, Http, InputTextStyle, Interaction, Member, MemberAction, Mentionable, ResolvedValue, RoleId, User, UserId};
+use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
+use serenity::all::{ActionRowComponent, AuditLogEntry, ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, CommandType, Context, CreateButton, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, EventHandler, GuildId, Http, InputTextStyle, Interaction, Member, MemberAction, Mentionable, ResolvedValue, RoleId, User, UserId};
 use serenity::all::audit_log::Action;
 use serenity::builder::{CreateActionRow, CreateEmbed, CreateInputText};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{error};
+use tracing::{error, warn};
 use crate::core::config::Config;
+use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{ModalHelper, OptionHelper, ResultDebug, Username};
 
 pub struct Warn {
@@ -17,6 +18,26 @@ pub struct Warn {
     warn_config: RwLock<WarnConfig>,
     // Key is modal id, value is (user id, action)
     pending_warns: Mutex<HashMap<String, (User, String)>>,
+}
+
+impl LoadModule<Warn> for Warn {
+    fn name() -> &'static str {
+        "warn"
+    }
+
+    fn description() -> &'static str {
+        "Sanctions & historique des remarques"
+    }
+
+    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Warn, Error> {
+        let module = Self { config: shared_data.config.clone(), warn_config: Default::default(), pending_warns: Default::default() };
+        let warn_config = shared_data.config.load_module_config::<Warn, WarnConfig>()?;
+        if warn_config.warn_channel == 0 {
+            return Err(Error::msg("Invalid warn channel id"));
+        }
+        *module.warn_config.write().await = warn_config;
+        Ok(module)
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -53,29 +74,6 @@ pub struct UserWarn {
 
 #[serenity::async_trait]
 impl BidibipModule for Warn {
-    fn name(&self) -> &'static str {
-        "warn"
-    }
-
-    fn fetch_commands(&self) -> Vec<CreateCommandDetailed> {
-        vec![
-            CreateCommandDetailed::new("warn").kind(CommandType::User),
-            CreateCommandDetailed::new("ban du vocal").kind(CommandType::User),
-            CreateCommandDetailed::new("kick").kind(CommandType::User),
-            CreateCommandDetailed::new("ban").kind(CommandType::User),
-            CreateCommandDetailed::new("sanction")
-                .description("Sanctionne un utilisateur")
-                .add_option(CreateCommandOption::new(CommandOptionType::User, "cible", "utilisateur à sanctionner").required(true))
-                .add_option(CreateCommandOption::new(CommandOptionType::String, "action", "sanction à appliquer")
-                    .required(true)
-                    .add_string_choice("warn", "warn")
-                    .add_string_choice("ban du vocal", "ban du vocal")
-                    .add_string_choice("kick", "kick")
-                    .add_string_choice("ban", "ban")
-                ),
-        ]
-    }
-
     async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) {
         let (action, target) =
             if name == "sanction" {
@@ -121,19 +119,29 @@ impl BidibipModule for Warn {
             Err(err) => { error!("Failed to fetch user data : {err}") }
         }
     }
+
+    fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
+        vec![
+            CreateCommandDetailed::new("warn").kind(CommandType::User).default_member_permissions(config.at_least_admin()),
+            CreateCommandDetailed::new("ban du vocal").kind(CommandType::User).default_member_permissions(config.at_least_helper()),
+            CreateCommandDetailed::new("kick").kind(CommandType::User).default_member_permissions(config.at_least_admin()),
+            CreateCommandDetailed::new("ban").kind(CommandType::User).default_member_permissions(config.at_least_admin()),
+            CreateCommandDetailed::new("sanction")
+                .default_member_permissions(config.at_least_admin())
+                .description("Sanctionne un utilisateur")
+                .add_option(CreateCommandOption::new(CommandOptionType::User, "cible", "utilisateur à sanctionner").required(true))
+                .add_option(CreateCommandOption::new(CommandOptionType::String, "action", "sanction à appliquer")
+                    .required(true)
+                    .add_string_choice("warn", "warn")
+                    .add_string_choice("ban du vocal", "ban du vocal")
+                    .add_string_choice("kick", "kick")
+                    .add_string_choice("ban", "ban")
+                ),
+        ]
+    }
 }
 
 impl Warn {
-    pub async fn new(config: Arc<Config>) -> Result<Self, Error> {
-        let module = Self { config: config.clone(), warn_config: Default::default(), pending_warns: Default::default() };
-        let warn_config: WarnConfig = config.load_module_config(&module)?;
-        if warn_config.warn_channel == 0 {
-            return Err(Error::msg("Invalid warn channel id"));
-        }
-        *module.warn_config.write().await = warn_config;
-        Ok(module)
-    }
-
     // Open warn modal
     async fn open_warn_modal(&self, ctx: Context, user: User, name: &str, command: CommandInteraction) {
         let title = match name {
@@ -165,11 +173,11 @@ impl Warn {
                 CreateActionRow::InputText(
                     CreateInputText::new(InputTextStyle::Paragraph, "Autres informations", "other")
                         .required(false)
-                        .placeholder("Informations complémentaires pour l'historique")),
+                        .placeholder("Autres informations (ne sera pas transmis)")),
                 CreateActionRow::InputText(
                     CreateInputText::new(InputTextStyle::Short, "Url", "url")
                         .required(false)
-                        .placeholder("Lien vers le message incriminant")),
+                        .placeholder("Lien vers le message contextuel")),
             ]))).await.on_fail("Failed to create interaction modal");
     }
 
@@ -212,25 +220,44 @@ impl Warn {
 
         // Update database
         warn_list.push(warn_data.clone());
-        self.config.save_module_config(self, &*write_config).unwrap();
+        self.config.save_module_config::<Self, WarnConfig>(&*write_config).unwrap();
 
 
         if affect_user {
-            match UserId::from(warn_data.to.id()).to_user(http).await {
-                Ok(user) => {
-                    println!("TEST : {:?} TODO", user);
+            let server_name = match GuildId::new(self.config.server_id).to_partial_guild(http).await {
+                Ok(guild) => { guild.name }
+                Err(err) => {
+                    error!("Failed to get server data : {}", err);
+                    "Unreal Engine FR".to_string()
+                }
+            };
 
-                    if let Some(member) = user.member {
-                        let member = Member::from(member.as_ref().clone());
+            match GuildId::from(self.config.server_id).member(http, warn_data.to.id()).await {
+                Ok(member) => {
+                    match warn_data.action.as_str() {
+                        "ban" => {
+                            match member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni de **{server_name}** pour raison :\n\n> `{}`\n\nBonne continuation à toi ! :wave:", warn_data.reason))).await {
+                                Ok(_) => {}
+                                Err(err) => { warn!("Failed to tell ban reason tu user : {}", err) }
+                            }
 
-                        match warn_data.action.as_str() {
-                            "ban" => { member.ban_with_reason(http, 0, warn_data.reason.as_str()).await.on_fail("Failed to ban member"); }
-                            "kick" => { member.kick_with_reason(http, warn_data.reason.as_str()).await.on_fail("Failed to kick member"); }
-                            "warn" => {}
-                            &_ => { error!("Unhandled warn action") }
+                            member.ban_with_reason(http, 0, warn_data.reason.as_str()).await.on_fail("Failed to ban member");
                         }
-                    } else {
-                        error!("Failed to get member data");
+                        "kick" => {
+                            match member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour raison :\n\n> `{}`\n\nNous tolérerons ton retour à la seule condition que tu sois en mesure de respecter notre communauté. :point_up:\nBien à toi.", warn_data.reason))).await {
+                                Ok(_) => {}
+                                Err(err) => { warn!("Failed to tell kick reason tu user : {}", err) }
+                            }
+
+                            member.kick_with_reason(http, warn_data.reason.as_str()).await.on_fail("Failed to kick member");
+                        }
+                        "warn" => {
+                            match member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nJe suis le robot de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await {
+                                Ok(_) => {}
+                                Err(err) => { warn!("Failed to tell kick reason tu user : {}", err) }
+                            }
+                        }
+                        &_ => { error!("Unhandled warn action") }
                     }
                 }
                 Err(err) => {
@@ -265,7 +292,7 @@ impl EventHandler for Warn {
                                 to: Username::from_user(&to),
                                 link: None,
                                 reason: entry.reason.unwrap_or_default(),
-                                details: Some(String::from("Kick manuellement")),
+                                details: Some(String::from("Kick manuel")),
                                 action: String::from("kick"),
                                 full_message_link: "".to_string(),
                             };
@@ -318,7 +345,7 @@ impl EventHandler for Warn {
                     }
                 }
 
-                if let Err(err) = ChannelId::new(self.config.channels.staff_channel).send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif !", last, warns.warns.len()))).await {
+                if let Err(err) = ChannelId::new(self.config.channels.staff_channel).send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif ! {}", Username::from_user(&new_member.user).full(), data.warns.len(), last))).await {
                     error!("Failed to send message : {}", err)
                 }
             }
@@ -328,6 +355,11 @@ impl EventHandler for Warn {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Modal(modal) = interaction {
             if let Some((target, action)) = self.pending_warns.lock().await.get(&modal.data.custom_id) {
+
+                if let Err(err) = modal.defer(&ctx.http).await {
+                    return error!("Failed to close modal interaction : {}", err);
+                }
+
                 let mut reason = String::new();
                 let mut details = None;
                 let mut url = None;
@@ -336,7 +368,9 @@ impl EventHandler for Warn {
                     for component in &component.components {
                         if let ActionRowComponent::InputText(text) = component {
                             match text.custom_id.as_str() {
-                                "reason" => { reason = text.value.clone().unwrap_or(String::new()); }
+                                "reason" => {
+                                    reason = text.value.clone().unwrap_or(String::new());
+                                }
                                 "other" => {
                                     if let Some(text) = &text.value {
                                         if !text.is_empty() { details = Some(text.clone()) }
@@ -369,8 +403,6 @@ impl EventHandler for Warn {
                 };
 
                 self.apply_warn(&ctx.http, warn_data, true).await;
-
-                modal.close(&ctx.http).await;
             }
         } else if let Interaction::Component(component) = interaction {
             if component.data.custom_id == "warn_update_message" {

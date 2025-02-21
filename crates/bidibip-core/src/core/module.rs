@@ -1,99 +1,158 @@
 use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Permissions, Ready, User};
-use serenity::builder::CreateCommand;
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc};
+use serenity::all::{ApplicationId, AuditLogEntry, ChannelId, Command, Context, CreateCommandPermission, EditCommandPermissions, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Ready, Role, RoleId, User};
+use serenity::model::Permissions;
 use serenity::prelude::EventHandler;
-use tracing::{error, info};
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 use crate::core::config::Config;
 use crate::core::logger::DiscordLogConnector;
-use crate::modules::{load_modules, BidibipModule, CreateCommandDetailed};
+use crate::modules::{load_modules, BidibipModule};
 
 pub struct GlobalInterface {
-    config: Arc<Config>,
-    modules: Vec<ModuleData>,
     log_connector: Arc<DiscordLogConnector>,
+    shared_data: Arc<BidibipSharedData>,
 }
 
-struct ModuleData {
-    module: Box<dyn BidibipModule>,
-    commands: HashSet<String>,
+pub struct ModuleData {
+    pub module: Box<dyn BidibipModule>,
+    pub command_names: HashSet<String>,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Default, Clone)]
+pub struct PermissionData {
+    member_permissions: Permissions,
+    helper_permissions: Permissions,
+    administrator_permissions: Permissions,
+}
+
+impl PermissionData {
+    pub fn at_least_admin(&self) -> Permissions {
+        self.administrator_permissions
+    }
+    pub fn at_least_helper(&self) -> Permissions {
+        self.helper_permissions.intersection(self.administrator_permissions)
+    }
+    pub fn at_least_member(&self) -> Permissions {
+        self.member_permissions.intersection(self.helper_permissions.intersection(self.administrator_permissions))
+    }
+}
+
+pub struct BidibipSharedData {
+    pub config: Arc<Config>,
+    pub modules: RwLock<Vec<ModuleData>>,
+    pub permissions: RwLock<PermissionData>,
 }
 
 impl GlobalInterface {
     // Default constructor
     // The log connector is used to provide the log channel to the logger
     pub async fn new(config: Arc<Config>, log_connector: Arc<DiscordLogConnector>) -> Self {
-        let mut modules = vec![];
-        for module in load_modules(config.clone()).await {
-            let mut commands = HashSet::new();
-            for command in module.fetch_commands() {
-                commands.insert(command.name);
-            }
+        let shared_data = Arc::new(BidibipSharedData { config, modules: Default::default(), permissions: Default::default() });
+        load_modules(&shared_data).await;
+        Self { shared_data, log_connector }
+    }
 
-            modules.push(ModuleData { module, commands })
+    pub async fn fetch_roles(&self, ctx: &Context) {
+        let roles = match GuildId::from(self.shared_data.config.server_id).roles(&ctx.http).await {
+            Ok(roles) => { roles }
+            Err(err) => {
+                return error!("Failed to fetch roles : {}", err);
+            }
+        };
+
+        let member_role = match roles.get(&RoleId::from(self.shared_data.config.roles.member)) {
+            None => {
+                return error!("Member role with id {} does not exists", self.shared_data.config.roles.member);
+            }
+            Some(role) => { role }
+        };
+
+        let admin_role = match roles.get(&RoleId::from(self.shared_data.config.roles.administrator)) {
+            None => {
+                return error!("Administrator role with id {} does not exists", self.shared_data.config.roles.administrator);
+            }
+            Some(role) => { role }
+        };
+
+        let helper_role = match roles.get(&RoleId::from(self.shared_data.config.roles.helper)) {
+            None => {
+                return error!("Helper role with id {} does not exists", self.shared_data.config.roles.helper);
+            }
+            Some(role) => { role }
+        };
+
+        let mut permissions = self.shared_data.permissions.write().await;
+
+        permissions.member_permissions = member_role.permissions;
+        permissions.administrator_permissions = admin_role.permissions;
+        permissions.helper_permissions = helper_role.permissions;
+
+        if member_role.permissions == admin_role.permissions {
+            permissions.member_permissions = Permissions::all();
+            permissions.administrator_permissions = Permissions::all();
+            error!("Member and admin permissions are the same !!!")
         }
 
-        Self { config: config.clone(), modules, log_connector }
+        if helper_role.permissions == admin_role.permissions {
+            permissions.helper_permissions = Permissions::all();
+            permissions.administrator_permissions = Permissions::all();
+            error!("Helper and admin permissions are the same !!!")
+        }
+
+        if member_role.permissions == helper_role.permissions {
+            permissions.member_permissions = Permissions::all();
+            permissions.helper_permissions = Permissions::all();
+            error!("Member and helper permissions are the same !!!")
+        }
     }
 
     pub async fn update_commands(&self, ctx: &Context) {
-        let mut commands = HashMap::new();
+        let mut outdated_commands = HashSet::new();
+        let mut command_list = vec![];
 
-        for module in &self.modules {
-            for command in module.module.fetch_commands() {
-                let mut cmd = CreateCommand::new(command.name.clone());
-
-                for localization in command.name_localizations {
-                    cmd = cmd.name_localized(localization.0, localization.1);
-                }
-                for localization in command.description_localizations {
-                    cmd = cmd.description_localized(localization.0, localization.1);
-                }
-                for option in command.options {
-                    cmd = cmd.add_option(option);
-                }
-                if let Some(perm) = command.default_member_permissions {
-                    cmd = cmd.default_member_permissions(Permissions::from_bits(u64::from_str(perm.as_str()).unwrap()).unwrap()); // @TODO : plus propre ici
-                }
-                if let Some(perm) = command.dm_permission {
-                    cmd = cmd.dm_permission(perm);
-                }
-                if let Some(kind) = command.kind {
-                    cmd = cmd.kind(kind)
-                }
-                if let Some(integration) = command.integration_types {
-                    cmd = cmd.integration_types(integration)
-                }
-                if let Some(contexts) = command.contexts {
-                    cmd = cmd.contexts(contexts)
-                }
-                if let Some(description) = command.description {
-                    cmd = cmd.description(description)
-                }
-
-                commands.insert(command.name, cmd);
+        let permissions = self.shared_data.permissions.read().await.clone();
+        for module in &*self.shared_data.modules.read().await {
+            for command in module.module.fetch_commands(&permissions) {
+                outdated_commands.insert(command.name.clone());
+                command_list.push(command.into());
             }
         }
 
-        let guild_id = GuildId::new(self.config.server_id);
+        let guild_id = GuildId::new(self.shared_data.config.server_id);
 
+        let glob = Command::get_global_commands(&ctx.http).await.unwrap();
+        if !glob.is_empty() {
+            match Command::set_global_commands(&ctx.http, vec![]).await {
+                Ok(_) => { warn!("Cleaned up old global commands"); }
+                Err(err) => { error!("Failed to cleanup old global commands : {}", err); }
+            };
+        }
+
+        let mut outdated = false;
         for command in guild_id.get_commands(&ctx.http).await.unwrap() {
-            if commands.contains_key(&command.name) {
-                commands.remove(&command.name);
+            if outdated_commands.contains(&command.name) {
+                outdated_commands.remove(&command.name);
             } else {
-                match guild_id.delete_command(&ctx.http, command.id).await {
-                    Ok(_) => {}
-                    Err(err) => { error!("Failed to remove outdated command {err}") }
-                };
+                outdated = true;
             }
         }
+        if !outdated_commands.is_empty() {
+            outdated = true;
+        }
 
-        for command in commands {
-            match guild_id.create_command(&ctx.http, command.1).await {
-                Ok(command) => { info!("Registered new command {}", command.name) }
-                Err(err) => { error!("Failed to register new command {err}") }
+
+        if outdated {
+            match guild_id.set_commands(&ctx.http, command_list).await {
+                Ok(_) => {
+                    warn!("Updated command list");
+                }
+                Err(err) => {
+                    error!("Failed to update command list : {}", err);
+                }
             };
         }
     }
@@ -101,84 +160,96 @@ impl GlobalInterface {
 
 #[serenity::async_trait]
 impl EventHandler for GlobalInterface {
+    async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, guild_id: GuildId) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.guild_audit_log_entry_create(ctx.clone(), entry.clone(), guild_id).await;
+        }
+    }
+
     async fn guild_ban_addition(&self, ctx: Context, guild_id: GuildId, banned_user: User) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_ban_addition(ctx.clone(), guild_id, banned_user.clone()).await
         }
     }
 
     async fn guild_ban_removal(&self, ctx: Context, guild_id: GuildId, unbanned_user: User) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_ban_removal(ctx.clone(), guild_id, unbanned_user.clone()).await
         }
     }
 
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_member_addition(ctx.clone(), new_member.clone()).await
         }
     }
 
     async fn guild_member_removal(&self, ctx: Context, guild_id: GuildId, user: User, member_data_if_available: Option<Member>) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_member_removal(ctx.clone(), guild_id, user.clone(), member_data_if_available.clone()).await
         }
     }
 
     async fn guild_member_update(&self, ctx: Context, old_if_available: Option<Member>, new: Option<Member>, event: GuildMemberUpdateEvent) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_member_update(ctx.clone(), old_if_available.clone(), new.clone(), event.clone()).await
         }
     }
 
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.message_delete(ctx.clone(), channel_id, deleted_message_id, guild_id).await;
         }
     }
 
     async fn message_delete_bulk(&self, ctx: Context, channel_id: ChannelId, multiple_deleted_messages_ids: Vec<MessageId>, guild_id: Option<GuildId>) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.message_delete_bulk(ctx.clone(), channel_id, multiple_deleted_messages_ids.clone(), guild_id).await;
         }
     }
 
     async fn message_update(&self, ctx: Context, old_if_available: Option<Message>, new: Option<Message>, event: MessageUpdateEvent) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.message_update(ctx.clone(), old_if_available.clone(), new.clone(), event.clone()).await;
         }
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        self.log_connector.init_for_channel(ChannelId::new(self.config.channels.log_channel), ctx.http.clone());
+        self.log_connector.init_for_channel(ChannelId::new(self.shared_data.config.channels.log_channel), ctx.http.clone());
+
+        self.fetch_roles(&ctx).await;
 
         self.update_commands(&ctx).await;
 
-        for module in &self.modules {
+
+        let permissions = self.shared_data.permissions.read().await.clone();
+        for module in self.shared_data.modules.write().await.deref_mut() {
+            let mut command_names = HashSet::new();
+            for command in module.module.fetch_commands(&permissions) {
+                command_names.insert(command.name);
+            }
+            module.command_names = command_names;
+        }
+
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.ready(ctx.clone(), ready.clone()).await;
-            info!("Initialized module {}", module.module.name());
+            info!("Initialized module {}", module.name);
         }
 
         info!("Je suis prêt à botter des culs ! >:)");
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        for module in &self.modules {
+        for module in self.shared_data.modules.read().await.deref() {
             module.module.interaction_create(ctx.clone(), interaction.clone()).await;
         }
 
         if let Interaction::Command(command) = interaction {
-            for module in &self.modules {
-                if module.commands.contains(&command.data.name) {
+            for module in self.shared_data.modules.read().await.deref() {
+                if module.command_names.contains(&command.data.name) {
                     module.module.execute_command(ctx.clone(), command.data.name.as_str(), command.clone()).await;
                 }
             }
-        }
-    }
-
-    async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, guild_id: GuildId) {
-        for module in &self.modules {
-            module.module.guild_audit_log_entry_create(ctx.clone(), entry.clone(), guild_id).await;
         }
     }
 }

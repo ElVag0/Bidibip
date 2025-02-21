@@ -1,9 +1,26 @@
+use std::sync::Arc;
+use anyhow::Error;
 use serenity::all::{ComponentInteractionDataKind, Context, EventHandler, Interaction, Mentionable, ResolvedValue};
 use tracing::{info};
+use crate::core::module::BidibipSharedData;
 use crate::core::utilities::Username;
-use crate::modules::BidibipModule;
+use crate::modules::{BidibipModule, LoadModule};
 
 pub struct Log {}
+
+impl LoadModule<Log> for Log {
+    fn name() -> &'static str {
+        "log"
+    }
+
+    fn description() -> &'static str {
+        "logs du serveur dans un channel dédié"
+    }
+
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Log, Error> {
+        Ok(Log{})
+    }
+}
 
 #[serenity::async_trait]
 impl EventHandler for Log {
@@ -40,7 +57,4 @@ impl EventHandler for Log {
 }
 
 impl BidibipModule for Log {
-    fn name(&self) -> &'static str {
-        "Log"
-    }
 }

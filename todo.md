@@ -1,10 +1,11 @@
 # Warns
 
-- vérifier qui a les droits pour warn
 - implementer le mute du vocal
 - Ajouter le prune
 
 # Help
+
+# Welcome
 
 ## Implemented
 
@@ -18,7 +19,6 @@
 > - Admin application
 > - Advertising2
 > - anti-spam
-> - quote
 > - reglement
 > - repost 
 > - server-download

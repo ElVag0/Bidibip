@@ -1,12 +1,12 @@
 use std::fs;
-use crate::modules::BidibipModule;
+use crate::modules::{BidibipModule, LoadModule};
 use anyhow::Error;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::warn;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Roles {
     pub support: u64,
     pub member: u64,
@@ -77,23 +77,24 @@ impl Config {
         }
     }
 
-    pub fn load_module_config<T: BidibipModule, C: Serialize + DeserializeOwned + Default>(&self, module: &T) -> Result<C, Error> {
+    pub fn load_module_config<Module: LoadModule<Module> + BidibipModule, Config: Serialize + DeserializeOwned + Default>(&self) -> Result<Config, Error> {
         fs::create_dir_all(&self.module_config_directory)?;
 
-        let config_file = self.module_config_directory.join(format!("{}_config.json", module.name()));
+        let config_file = self.module_config_directory.join(format!("{}_config.json", Module::name()));
 
         if !fs::exists(&config_file)? {
             // Create log files and channels
-            fs::write(&config_file, serde_json::to_string_pretty(&C::default())?)?;
-            warn!("Initialized config file for module {} to {config_file:?}", module.name());
+            fs::write(&config_file, serde_json::to_string_pretty(&Config::default())?)?;
+            warn!("Initialized config file for module {} to {config_file:?}", Module::name());
         }
 
         Ok(serde_json::from_str(&fs::read_to_string(&config_file)?)?)
     }
 
-    pub fn save_module_config<T: BidibipModule, C: Serialize + DeserializeOwned>(&self, module: &T, config: &C) -> Result<(), Error> {
+    pub fn save_module_config<Module: LoadModule<Module> + BidibipModule, Config: Serialize + DeserializeOwned>(&self, config: &Config) -> Result<(), Error> {
         fs::create_dir_all(&self.module_config_directory)?;
-        let config_file = self.module_config_directory.join(format!("{}_config.json", module.name()));
+
+        let config_file = self.module_config_directory.join(format!("{}_config.json", Module::name()));
         fs::write(&config_file, serde_json::to_string_pretty(config)?)?;
         Ok(())
     }

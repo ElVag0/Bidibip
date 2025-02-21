@@ -1,21 +1,33 @@
 use std::sync::Arc;
+use anyhow::Error;
 use serenity::all::{ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent, UserId};
 use serenity::all::audit_log::Action;
 use serenity::builder::CreateEmbed;
 use tracing::{error, info};
 use crate::core::config::Config;
+use crate::core::module::BidibipSharedData;
 use crate::core::utilities::{ResultDebug, Username};
-use crate::modules::BidibipModule;
+use crate::modules::{BidibipModule, LoadModule};
 
 pub struct History {
     config: Arc<Config>,
 }
 
-impl History {
-    pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+impl LoadModule<History> for History {
+    fn name() -> &'static str {
+        "history"
+    }
+
+    fn description() -> &'static str {
+        "Historique des messages modifiés et supprimés"
+    }
+
+    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<History, Error> {
+        Ok(History { config: shared_data.config.clone() })
     }
 }
+
+impl BidibipModule for History {}
 
 #[serenity::async_trait]
 impl EventHandler for History {
@@ -178,11 +190,5 @@ impl EventHandler for History {
                         Username::from_user(&user).full()
                     }
                 }, old_text, new_text);
-    }
-}
-
-impl BidibipModule for History {
-    fn name(&self) -> &'static str {
-        "History"
     }
 }
