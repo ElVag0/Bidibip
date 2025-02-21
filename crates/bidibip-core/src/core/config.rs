@@ -95,7 +95,7 @@ impl Config {
         Ok(serde_json::from_str(&fs::read_to_string(&config_file)?)?)
     }
 
-    pub fn save_module_config<Module: LoadModule<Module> + BidibipModule, Config: Serialize + DeserializeOwned>(&self, config: &Config) -> Result<(), Error> {
+    pub fn save_module_config<Module: LoadModule<Module> + BidibipModule, Config: Serialize>(&self, config: &Config) -> Result<(), Error> {
         fs::create_dir_all(&self.module_config_directory)?;
 
         let config_file = self.module_config_directory.join(format!("{}_config.json", Module::name()));

@@ -196,6 +196,12 @@ impl EventHandler for GlobalInterface {
         }
     }
 
+    async fn message(&self, ctx: Context, new_message: Message) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.message(ctx.clone(), new_message.clone()).await;
+        }
+    }
+
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
         for module in self.shared_data.modules.read().await.deref() {
             module.module.message_delete(ctx.clone(), channel_id, deleted_message_id, guild_id).await;

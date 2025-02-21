@@ -13,6 +13,7 @@ mod modo;
 mod help;
 mod utilities;
 mod welcome;
+mod reglement;
 
 #[serenity::async_trait]
 pub trait BidibipModule: Sync + Send + EventHandler {
@@ -55,4 +56,5 @@ pub async fn load_modules(shared_data: &Arc<BidibipSharedData>) {
     load_module::<modo::Modo>(shared_data).await;
     load_module::<utilities::Utilities>(shared_data).await;
     load_module::<welcome::Welcome>(shared_data).await;
+    load_module::<reglement::Reglement>(shared_data).await;
 }

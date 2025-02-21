@@ -1,29 +1,27 @@
-## en cours
+## En cours
 
-> - utilities
+> - ⚡ repost
 
 ## Fait
 
-> - ✅ Warns
-> - ✅ log
-> - ✅ History
-> - ✅ modo
-> - ✅ Say
+> - ✅ Reglement
 > - ✅ Help
+> - ✅ History
+> - ✅ Log
+> - ✅ Modo
+> - ✅ Say
+> - ✅ Warns
 > - ✅ Welcome
 
 ## Pas fait (urgent)
 
-> - ❌ Admin application
 > - ❌ Advertising
 > - ❌ anti-spam
-> - ❌ reglement
-> - ❌ repost
 >
 > Nombre d'users
 
 ## Pas fait (pas urgent)
-
+> - ❌ Utilities
 > - ❌ Admin application
 > - ❌ server-download
 >

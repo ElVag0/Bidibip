@@ -32,15 +32,6 @@
         "Nous ne souhaitons pas censurer les sujets de conversation n’évoquant pas directement Unreal Engine. Cependant les discussions hors-propos ne doivent pas sortir du salon <#304930315040849920>.",
         "",
         "Nous nous réservons le droit d’appliquer des sanctions selon le contexte et le jugement de la modération."
-      ],
-      "interactions": [
-        {
-          "bouton": {
-            "identifiant": "approval",
-            "texte": "J'accepte le reglement !",
-            "type": "Success"
-          }
-        }
       ]
     },
     {
@@ -83,6 +74,15 @@
         {
           "titre": "<:CompileWarning:1101536024712196227> Rappel <:CompileWarning:1101536024712196227>",
           "description": "Vous devez accepter le règlement pour accéder au serveur!"
+        }
+      ],
+      "interactions": [
+        {
+          "bouton": {
+            "identifiant": "reglement_approval",
+            "texte": "J'accepte le reglement !",
+            "type": "Success"
+          }
         }
       ]
     }
