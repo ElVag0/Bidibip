@@ -12,6 +12,7 @@ pub struct Roles {
     pub member: u64,
     pub helper: u64,
     pub administrator: u64,
+    pub mute: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -51,6 +52,7 @@ impl Default for Config {
                 member: 0,
                 helper: 0,
                 administrator: 0,
+                mute: 0,
             },
             cache_message_size: 10000,
         }
@@ -64,9 +66,11 @@ impl Config {
 
             assert_ne!(config.application_id, 0, "Invalid application id in config");
             assert_ne!(config.server_id, 0, "Invalid server id in config");
+            assert_ne!(config.roles.support, 0, "Invalid helper role id in config");
             assert_ne!(config.roles.member, 0, "Invalid member role id in config");
-            assert_ne!(config.roles.administrator, 0, "Invalid administrator role id in config");
             assert_ne!(config.roles.helper, 0, "Invalid helper role id in config");
+            assert_ne!(config.roles.administrator, 0, "Invalid administrator role id in config");
+            assert_ne!(config.roles.mute, 0, "Invalid helper role id in config");
             assert_ne!(config.channels.staff_channel, 0, "Invalid staff channel id in config");
             assert_ne!(config.channels.log_channel, 0, "Invalid staff channel id in config");
 

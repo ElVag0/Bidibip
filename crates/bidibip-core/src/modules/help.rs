@@ -39,7 +39,7 @@ impl BidibipModule for Help {
                 if let Some(member) = command.member.clone() {
                     if let Some(user_permissions) = member.permissions {
                         if let Some(perms) = found_command.default_member_permissions {
-                            if !perms.contains(user_permissions) {
+                            if !user_permissions.contains(perms) {
                                 continue;
                             }
                         }

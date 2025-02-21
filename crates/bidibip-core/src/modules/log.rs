@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use anyhow::Error;
-use serenity::all::{ComponentInteractionDataKind, Context, EventHandler, Interaction, Mentionable, ResolvedValue};
+use serenity::all::{ComponentInteractionDataKind, Context, EventHandler, GuildId, Interaction, Member, Mentionable, ResolvedValue, User};
 use tracing::{info};
 use crate::core::module::BidibipSharedData;
 use crate::core::utilities::Username;
@@ -24,6 +24,14 @@ impl LoadModule<Log> for Log {
 
 #[serenity::async_trait]
 impl EventHandler for Log {
+    async fn guild_member_addition(&self, _: Context, new_member: Member) {
+        info!("{} a rejoint le serveur", Username::from_user(&new_member.user).full());
+    }
+
+    async fn guild_member_removal(&self, _: Context, _: GuildId, user: User, _: Option<Member>) {
+        info!("{} a quitté le serveur", Username::from_user(&user).full());
+    }
+
     async fn interaction_create(&self, _ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command_interaction) => {

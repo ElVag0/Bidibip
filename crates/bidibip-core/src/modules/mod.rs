@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::{Arc};
 use anyhow::Error;
 use serenity::all::{CommandInteraction, Context, EventHandler};
@@ -20,7 +19,7 @@ pub trait BidibipModule: Sync + Send + EventHandler {
     // When one of the specified command is executed
     async fn execute_command(&self, _ctx: Context, _name: &str, _command: CommandInteraction) {}
     // Get a list of available commands for this module
-    fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> { vec![] }
+    fn fetch_commands(&self, _config: &PermissionData) -> Vec<CreateCommandDetailed> { vec![] }
 }
 
 pub trait LoadModule<T: BidibipModule> {
@@ -55,4 +54,5 @@ pub async fn load_modules(shared_data: &Arc<BidibipSharedData>) {
     load_module::<help::Help>(shared_data).await;
     load_module::<modo::Modo>(shared_data).await;
     load_module::<utilities::Utilities>(shared_data).await;
+    load_module::<welcome::Welcome>(shared_data).await;
 }

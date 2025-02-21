@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
-use serenity::all::{ApplicationId, AuditLogEntry, ChannelId, Command, Context, CreateCommandPermission, EditCommandPermissions, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Ready, Role, RoleId, User};
+use serenity::all::{AuditLogEntry, ChannelId, Command, Context, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Ready, RoleId, User};
 use serenity::model::Permissions;
 use serenity::prelude::EventHandler;
 use tokio::sync::RwLock;

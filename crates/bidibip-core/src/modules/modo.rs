@@ -50,10 +50,6 @@ impl LoadModule<Modo> for Modo {
 
 #[serenity::async_trait]
 impl BidibipModule for Modo {
-    fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
-        vec![CreateCommandDetailed::new("modo").description("ouvre un canal direct avec la modération")]
-    }
-
     async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) {
         if name == "modo" {
             let mut modo_config = self.modo_config.write().await;
@@ -122,6 +118,10 @@ impl BidibipModule for Modo {
 
             self.config.save_module_config::<Modo, ModoConfig>(&*modo_config).unwrap();
         }
+    }
+
+    fn fetch_commands(&self, _: &PermissionData) -> Vec<CreateCommandDetailed> {
+        vec![CreateCommandDetailed::new("modo").description("ouvre un canal direct avec la modération")]
     }
 }
 

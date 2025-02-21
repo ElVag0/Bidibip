@@ -1,17 +1,21 @@
-use std::sync::Arc;
+use std::sync::{Arc};
 use anyhow::Error;
-use serenity::all::{Context, EventHandler, GuildId, Member, User};
-use crate::core::config::Config;
+use serde::{Deserialize, Serialize};
+use serenity::all::{ChannelId, Context, CreateMessage, EventHandler, GuildId, Member, Mentionable, User};
 use crate::core::module::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
+use rand::seq::SliceRandom;
+use tracing::error;
 
-struct Welcome {
-    config: Arc<Config>,
+pub struct Welcome {
+    welcome_config: WelcomeConfig,
 }
 
+#[derive(Serialize, Deserialize, Default)]
 struct WelcomeConfig {
     join_channel: u64,
     leave_channel: u64,
+    reglement_channel: u64,
     welcome_messages: Vec<String>,
     leave_messages: Vec<String>
 }
@@ -26,19 +30,37 @@ impl LoadModule<Welcome> for Welcome {
     }
 
     async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Welcome, Error> {
-        Ok(Welcome { config: shared_data.config.clone() })
+        let welcome_config = shared_data.config.load_module_config::<Welcome, WelcomeConfig>()?;
+        Ok(Welcome { welcome_config })
     }
 }
 
 #[serenity::async_trait]
 impl EventHandler for Welcome {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        todo!()
+        let mut sentence = match self.welcome_config.welcome_messages.choose(&mut rand::thread_rng()) {
+            None => {String::from("Bienvenue parmi nous {} :wave: !")}
+            Some(sentence) => {sentence.clone()}
+        };
+        sentence += "\n> N'oublies pas de lire le {reglement} pour accéder au serveur.";
+        let sentence = sentence.replace("{user}", new_member.user.mention().to_string().as_str()).replace("{reglement}", ChannelId::from(self.welcome_config.reglement_channel).mention().to_string().as_str());
+        if let Err(err) = ChannelId::from(self.welcome_config.join_channel).send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
+            error!("Failed to send welcome message : {}", err);
+        }
     }
 
-    async fn guild_member_removal(&self, ctx: Context, guild_id: GuildId, user: User, member_data_if_available: Option<Member>) {
-        todo!()
+    async fn guild_member_removal(&self, ctx: Context, _: GuildId, user: User, _: Option<Member>) {
+        let sentence = match self.welcome_config.leave_messages.choose(&mut rand::thread_rng()) {
+            None => {String::from("{} nous a quitté !")}
+            Some(sentence) => {sentence.clone()}
+        };
+        let sentence = sentence.replace("{user}", user.mention().to_string().as_str());
+        if let Err(err) = ChannelId::from(self.welcome_config.leave_channel).send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
+            error!("Failed to send leave message : {}", err);
+        }
     }
 }
 
-impl BidibipModule for Welcome {}
+impl BidibipModule for Welcome {
+
+}

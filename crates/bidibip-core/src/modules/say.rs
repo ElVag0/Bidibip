@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
 use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommandOption, EventHandler, ResolvedValue};
 use tracing::error;
+use crate::core::json_to_message::json_to_message;
 use crate::core::module::{BidibipSharedData, PermissionData};
-use crate::core::utilities::{json_to_message, CommandHelper, OptionHelper, ResultDebug};
+use crate::core::utilities::{CommandHelper, OptionHelper, ResultDebug};
 
 #[derive(Serialize, Deserialize)]
 pub struct Say {}
@@ -35,6 +36,9 @@ impl BidibipModule for Say {
                 }
             } else if let Some(option) = command.data.options().find("fichier") {
                 if let ResolvedValue::Attachment(attachment) = option {
+                    if let Err(err) = command.defer(&ctx.http).await {
+                        return error!("Failed to defer say command {}", err);
+                    }
                     let message = String::from_utf8(match attachment.download().await {
                         Ok(download) => { download }
                         Err(err) => { return error!("Failed to download attachment : {}", err) }
@@ -47,7 +51,7 @@ impl BidibipModule for Say {
                         }
                         Err(err) => { error!("Invalid json_to_message : {}", err) }
                     }
-                    command.skip(&ctx.http).await;
+                    command.delete_response(&ctx.http).await.on_fail("Failed to delete command interaction");
                 }
             } else {
                 command.respond_user_error(&ctx.http, "Tu n'as pas précisé ce que je dois annoncer !").await;

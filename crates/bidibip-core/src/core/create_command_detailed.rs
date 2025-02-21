@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use serenity::all::{CommandType, CreateCommand, CreateCommandOption, EntryPointHandlerType, InstallationContext, InteractionContext, Permissions};
 
 #[derive(Clone)]
