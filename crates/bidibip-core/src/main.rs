@@ -21,7 +21,6 @@ async fn main() {
     };
     let log_connector = core::logger::init_logger(config.clone());
 
-
     // Set gateway intents, which decides what events the bot will be notified about
     let intents =
         GatewayIntents::GUILDS |

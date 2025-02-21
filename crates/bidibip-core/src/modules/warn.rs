@@ -3,7 +3,7 @@ use std::sync::{Arc};
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::modules::{BidibipModule};
+use crate::modules::{BidibipModule, CreateCommandDetailed};
 use serenity::all::{ActionRowComponent, AuditLogEntry, ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, CommandType, Context, CreateButton, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal, EventHandler, GuildId, Http, InputTextStyle, Interaction, Member, MemberAction, Mentionable, ResolvedValue, RoleId, User, UserId};
 use serenity::all::audit_log::Action;
 use serenity::builder::{CreateActionRow, CreateEmbed, CreateInputText};
@@ -57,13 +57,13 @@ impl BidibipModule for Warn {
         "warn"
     }
 
-    fn fetch_commands(&self) -> Vec<(String, CreateCommand)> {
+    fn fetch_commands(&self) -> Vec<CreateCommandDetailed> {
         vec![
-            ("warn".to_string(), CreateCommand::new("warn").kind(CommandType::User)),
-            ("ban du vocal".to_string(), CreateCommand::new("ban du vocal").kind(CommandType::User)),
-            ("kick".to_string(), CreateCommand::new("kick").kind(CommandType::User)),
-            ("ban".to_string(), CreateCommand::new("ban").kind(CommandType::User)),
-            ("sanction".to_string(), CreateCommand::new("sanction")
+            CreateCommandDetailed::new("warn").kind(CommandType::User),
+            CreateCommandDetailed::new("ban du vocal").kind(CommandType::User),
+            CreateCommandDetailed::new("kick").kind(CommandType::User),
+            CreateCommandDetailed::new("ban").kind(CommandType::User),
+            CreateCommandDetailed::new("sanction")
                 .description("Sanctionne un utilisateur")
                 .add_option(CreateCommandOption::new(CommandOptionType::User, "cible", "utilisateur à sanctionner").required(true))
                 .add_option(CreateCommandOption::new(CommandOptionType::String, "action", "sanction à appliquer")
@@ -72,8 +72,7 @@ impl BidibipModule for Warn {
                     .add_string_choice("ban du vocal", "ban du vocal")
                     .add_string_choice("kick", "kick")
                     .add_string_choice("ban", "ban")
-                )
-            ),
+                ),
         ]
     }
 
@@ -219,9 +218,10 @@ impl Warn {
         if affect_user {
             match UserId::from(warn_data.to.id()).to_user(http).await {
                 Ok(user) => {
+                    println!("TEST : {:?} TODO", user);
+
                     if let Some(member) = user.member {
                         let member = Member::from(member.as_ref().clone());
-
 
                         match warn_data.action.as_str() {
                             "ban" => { member.ban_with_reason(http, 0, warn_data.reason.as_str()).await.on_fail("Failed to ban member"); }
@@ -233,7 +233,9 @@ impl Warn {
                         error!("Failed to get member data");
                     }
                 }
-                Err(err) => { error!("Failed to get user data : {err}") }
+                Err(err) => {
+                    error!("Failed to get user data : {err}")
+                }
             }
         }
     }

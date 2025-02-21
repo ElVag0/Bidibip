@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread::ThreadId;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, ChannelType, CommandInteraction, Context, CreateChannel, CreateCommand, CreateMessage, CreateThread, EditThread, EventHandler, GuildChannel, GuildId, Member, Mentionable, ThreadMember, UserId};
-use serenity::builder::CreateEmbed;
+use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, Context, CreateButton, CreateChannel, CreateCommand, CreateEmbedAuthor, CreateMessage, CreateThread, EditThread, EventHandler, GuildChannel, GuildId, Integration, Interaction, Member, Mentionable, RoleId, ThreadMember, UserId};
+use serenity::builder::{CreateActionRow, CreateEmbed};
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{error, warn};
 use crate::core::config::Config;
-use crate::core::utilities::{ResultDebug, Username};
-use crate::modules::BidibipModule;
+use crate::core::utilities::{CommandHelper, Username};
+use crate::modules::{BidibipModule, CreateCommandDetailed};
 
 pub struct Modo {
     config: Arc<Config>,
@@ -46,43 +45,102 @@ impl BidibipModule for Modo {
         "Modo"
     }
 
-    fn fetch_commands(&self) -> Vec<(String, CreateCommand)> {
-        vec![("modo".to_string(), CreateCommand::new("modo").description("ouvre un canal direct avec la modération"))]
+    fn fetch_commands(&self) -> Vec<CreateCommandDetailed> {
+        vec![CreateCommandDetailed::new("modo").description("ouvre un canal direct avec la modération")]
     }
 
     async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) {
         if name == "modo" {
             let mut modo_config = self.modo_config.write().await;
 
-            if modo_config.tickets.contains_key(&command.user.id.get()) {} else {
-                let mut thread = match ChannelId::from(modo_config.modo_channel).create_thread(&ctx.http, CreateThread::new(Username::from_user(&command.user).safe_full()).invitable(false).kind(ChannelType::PrivateThread)).await {
+            // Get or create thread
+            let mut thread = None;
+            if modo_config.tickets.contains_key(&command.user.id.get()) {
+                if let Some(ticket) = modo_config.tickets.get(&command.user.id.get()) {
+                    match ChannelId::from(ticket.thread).to_channel(&ctx.http).await {
+                        Ok(channel) => {
+                            if let Some(guild_channel) = channel.guild() {
+                                thread = Some(guild_channel);
+                            } else {
+                                modo_config.tickets.remove(&command.user.id.get());
+                                warn!("Failed to get guild_channel for modo command !");
+                            }
+                        }
+                        Err(err) => {
+                            modo_config.tickets.remove(&command.user.id.get());
+                            warn!("Failed to find existing modo thread ! {}", err);
+                        }
+                    }
+                } else {
+                    modo_config.tickets.remove(&command.user.id.get());
+                    return error!("This should never happen !!");
+                }
+            }
+            if thread.is_none() {
+                let mut new_thread = match ChannelId::from(modo_config.modo_channel).create_thread(&ctx.http, CreateThread::new(Username::from_user(&command.user).safe_full()).invitable(false).kind(ChannelType::PrivateThread)).await {
                     Ok(thread) => { thread }
                     Err(err) => { return error!("Failed to create modo thread : {}", err) }
                 };
+                modo_config.tickets.insert(command.user.id.get(), UserTickets { thread: new_thread.id.get() });
+                thread = Some(new_thread);
+            };
 
+            // Send message
+            if let Some(thread) = thread {
                 if let Err(err) = thread.id.add_thread_member(&ctx.http, command.user.id).await {
                     return error!("Failed to add user to modo thread {}", err);
                 }
-                let mention_to_admins = UserId::from(self.config.roles.administrator).mention();
+                let mention_to_admins = RoleId::from(self.config.roles.administrator).mention();
 
-                let mut embed = CreateEmbed::new()
-                    .title(format!("{} < A l'aide ! 🖐", ))
-                    .field("Canal de communication ouvert :robot:", format!("Tu es maintenant en communication directe avec les {}.\nA toi de nous dire ce qui ne va pas.", mention_to_admins), false);
+                let mut embed = CreateEmbed::new().field("Canal de communication ouvert :robot:", format!("Tu es maintenant en communication directe avec les {}.\nA toi de nous dire ce qui ne va pas.", mention_to_admins), false);
 
                 if let Some(thumbnail) = command.user.avatar_url() {
-                    embed = embed.thumbnail(thumbnail);
+                    embed = embed.author(CreateEmbedAuthor::new(format!("{} < A l'aide ! 🖐", command.user.name)).icon_url(thumbnail));
+                } else {
+                    embed = embed.title(format!("{} < A l'aide ! 🖐", command.user.name));
                 }
 
-                thread.send_message(&ctx.http, CreateMessage::new()
+                if let Err(err) = thread.send_message(&ctx.http, CreateMessage::new()
                     .content(format!("{} {}", command.user.mention(), mention_to_admins))
-                    .embed())
+                    .embed(embed)
+                    .components(vec![CreateActionRow::Buttons(vec![CreateButton::new("modo_close_thread").label("Fermer la discussion").style(ButtonStyle::Secondary)])])).await {
+                    return error!("Failed to send modo welcome message : {}", err);
+                }
 
-
-                thread.edit_thread(&ctx.http, EditThread::new().archived(false).locked(false)).await;
+                if let Err(err) = thread.id.edit_thread(&ctx.http, EditThread::new().archived(false).locked(false)).await {
+                    return error!("Failed to unarchive thread {}", err);
+                }
+            } else {
+                return error!("Failed to get thread for modo command");
             }
+            command.skip(&ctx.http).await;
+
+            self.config.save_module_config(self, &*modo_config).unwrap();
         }
     }
 }
 
 #[serenity::async_trait]
-impl EventHandler for Modo {}
+impl EventHandler for Modo {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        match interaction {
+            Interaction::Component(component) => {
+                if component.data.custom_id == "modo_close_thread" {
+                    let mut modo_config = self.modo_config.read().await;
+                    for (user, ticket_data) in &modo_config.tickets {
+                        if ticket_data.thread == component.channel_id.get() {
+                            if let Err(err) = component.channel_id.remove_thread_member(&ctx.http, UserId::from(*user)).await {
+                                return error!("Failed to remove user from modo thread {}", err);
+                            }
+
+                            if let Err(err) = component.channel_id.edit_thread(&ctx.http, EditThread::new().archived(true).locked(true)).await {
+                                return error!("Failed to archive thread {}", err);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}

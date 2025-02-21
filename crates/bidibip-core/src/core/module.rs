@@ -1,11 +1,14 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Ready, User};
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Permissions, Ready, User};
+use serenity::builder::CreateCommand;
 use serenity::prelude::EventHandler;
 use tracing::{error, info};
 use crate::core::config::Config;
 use crate::core::logger::DiscordLogConnector;
-use crate::modules::{load_modules, BidibipModule};
+use crate::modules::{load_modules, BidibipModule, CreateCommandDetailed};
 
 pub struct GlobalInterface {
     config: Arc<Config>,
@@ -26,7 +29,7 @@ impl GlobalInterface {
         for module in load_modules(config.clone()).await {
             let mut commands = HashSet::new();
             for command in module.fetch_commands() {
-                commands.insert(command.0);
+                commands.insert(command.name);
             }
 
             modules.push(ModuleData { module, commands })
@@ -39,8 +42,38 @@ impl GlobalInterface {
         let mut commands = HashMap::new();
 
         for module in &self.modules {
-            for (name, command) in module.module.fetch_commands() {
-                commands.insert(name.clone(), command.name(name));
+            for command in module.module.fetch_commands() {
+                let mut cmd = CreateCommand::new(command.name.clone());
+
+                for localization in command.name_localizations {
+                    cmd = cmd.name_localized(localization.0, localization.1);
+                }
+                for localization in command.description_localizations {
+                    cmd = cmd.description_localized(localization.0, localization.1);
+                }
+                for option in command.options {
+                    cmd = cmd.add_option(option);
+                }
+                if let Some(perm) = command.default_member_permissions {
+                    cmd = cmd.default_member_permissions(Permissions::from_bits(u64::from_str(perm.as_str()).unwrap()).unwrap()); // @TODO : plus propre ici
+                }
+                if let Some(perm) = command.dm_permission {
+                    cmd = cmd.dm_permission(perm);
+                }
+                if let Some(kind) = command.kind {
+                    cmd = cmd.kind(kind)
+                }
+                if let Some(integration) = command.integration_types {
+                    cmd = cmd.integration_types(integration)
+                }
+                if let Some(contexts) = command.contexts {
+                    cmd = cmd.contexts(contexts)
+                }
+                if let Some(description) = command.description {
+                    cmd = cmd.description(description)
+                }
+
+                commands.insert(command.name, cmd);
             }
         }
 

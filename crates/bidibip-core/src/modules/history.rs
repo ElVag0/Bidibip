@@ -24,6 +24,12 @@ impl EventHandler for History {
         let mut old_message_content = format!("Ancien message : {}", deleted_message_id.link(channel_id, guild_id));
         let mut user = None;
         if let Some(deleted) = ctx.cache.message(channel_id, deleted_message_id) {
+
+            // Skip self
+            if deleted.author.id.get() == self.config.application_id {
+                return;
+            }
+
             if !deleted.content.is_empty() {
                 old_message_content = deleted.content.clone()
             } else if !deleted.attachments.is_empty() {
@@ -110,6 +116,12 @@ impl EventHandler for History {
         }
 
         if let Some(new) = new {
+
+            // Skip self
+            if new.author.id.get() == self.config.application_id {
+                return;
+            }
+
             if user.is_none() {
                 user = Some(new.author.clone());
             }

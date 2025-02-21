@@ -1,11 +1,73 @@
 use std::fmt::Display;
 use std::sync::Arc;
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{CommandInteraction, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
+use serenity::all::{ButtonKind, ButtonStyle, CommandInteraction, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
+use serenity::builder::CreateEmbed;
 use tracing::error;
 
-pub fn json_to_message(_json: String) -> Vec<CreateMessage> {
-    vec![]
+#[derive(Deserialize, Debug)]
+struct JsonToMessageMessageInteraction {
+    #[serde(rename = "type")]
+    button_type: String,
+    texte: String,
+    identifiant: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct JsonToMessageMessageEmbed {
+    title: String,
+    description: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct JsonToMessageMessage {
+    textes: Vec<String>,
+    embed: Vec<JsonToMessageMessageEmbed>,
+    interactions: Vec<JsonToMessageMessageInteraction>,
+}
+
+#[derive(Deserialize, Debug)]
+struct JsonToMessageBase {
+    messages: Vec<JsonToMessageMessage>,
+}
+
+pub fn json_to_message(json: String) -> Result<Vec<CreateMessage>, Error> {
+    let data: JsonToMessageBase = serde_json::from_str(json.as_str())?;
+    let mut messages = vec![];
+
+    for message in data.messages {
+        let mut data = CreateMessage::new();
+
+        if message.textes.is_empty() && message.embed.is_empty() {
+            return Err(Error::msg("Chaque message doit contenir au moins message ou au moins un embed"));
+        }
+        if !message.textes.is_empty() {
+            let mut full_text = String::new();
+            for text in message.textes {
+                full_text += format!("{}\n", text).as_str();
+            }
+            data = data.content(full_text);
+        }
+        for embed in message.embed {
+            data = data.embed(CreateEmbed::new().title(embed.title).description(embed.description));
+        }
+        let mut components = vec![];
+        for interaction in message.interactions {
+
+            let button_type = match interaction.button_type.as_str() {
+                "Primary" => { ButtonStyle::Primary }
+                "Secondary" => { ButtonStyle::Secondary }
+                "Success" => { ButtonStyle::Success }
+                "Danger" => { ButtonStyle::Danger }
+                &_ => { ButtonStyle::Primary }
+            };
+            components.push(CreateActionRow::Buttons(vec![CreateButton::new(interaction.identifiant).label(interaction.texte).style(button_type)]))
+        }
+        data = data.components(components);
+        messages.push(data);
+    }
+    Ok(messages)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
