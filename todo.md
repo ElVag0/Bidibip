@@ -1,6 +1,7 @@
 ## En cours
 
 > - ⚡ repost
+> - ⚡ Utilities
 
 ## Fait
 
@@ -18,10 +19,11 @@
 > - ❌ Advertising
 > - ❌ anti-spam
 >
-> Nombre d'users
+> 
+> - Nombre d'users
+> - Mise à jour automatique
 
 ## Pas fait (pas urgent)
-> - ❌ Utilities
 > - ❌ Admin application
 > - ❌ server-download
 >
