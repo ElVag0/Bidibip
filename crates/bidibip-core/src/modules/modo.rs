@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, Context, CreateButton, CreateEmbedAuthor, CreateMessage, CreateThread, EditThread, EventHandler, Interaction, Mentionable, RoleId, UserId};
+use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, Context, CreateButton, CreateEmbedAuthor, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateThread, EditThread, EventHandler, Interaction, Mentionable, RoleId, UserId};
 use serenity::builder::{CreateActionRow, CreateEmbed};
 use tokio::sync::RwLock;
 use tracing::{error, warn};
@@ -111,10 +111,16 @@ impl BidibipModule for Modo {
                 if let Err(err) = thread.id.edit_thread(&ctx.http, EditThread::new().archived(false).locked(false)).await {
                     return error!("Failed to unarchive thread {}", err);
                 }
+
+                 if let Err(err) = command.create_response(&ctx.http, CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .ephemeral(true)
+                        .embed(CreateEmbed::new().title("Canal de communication ouvert").description(format!("Parle avec la modération ici : {}", thread.mention()))))).await {
+                     return error!("Failed to send redirection message {}", err);
+                 }
             } else {
                 return error!("Failed to get thread for modo command");
             }
-            command.skip(&ctx.http).await;
 
             self.config.save_module_config::<Modo, ModoConfig>(&*modo_config).unwrap();
         }

@@ -1,7 +1,7 @@
 use std::collections::{HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
-use serenity::all::{AuditLogEntry, ChannelId, Command, Context, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, Ready, RoleId, User};
+use serenity::all::{AuditLogEntry, ChannelId, Command, Context, GuildChannel, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, PartialGuildChannel, Ready, RoleId, User};
 use serenity::model::Permissions;
 use serenity::prelude::EventHandler;
 use tokio::sync::RwLock;
@@ -181,6 +181,30 @@ impl EventHandler for GlobalInterface {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
         for module in self.shared_data.modules.read().await.deref() {
             module.module.guild_member_addition(ctx.clone(), new_member.clone()).await
+        }
+    }
+
+    async fn thread_create(&self, ctx: Context, thread: GuildChannel) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.thread_create(ctx.clone(), thread.clone()).await
+        }
+    }
+
+    async fn thread_delete(&self, ctx: Context, thread: PartialGuildChannel, full_thread_data: Option<GuildChannel>) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.thread_delete(ctx.clone(), thread.clone(), full_thread_data.clone()).await
+        }
+    }
+
+    async fn channel_create(&self, ctx: Context, channel: GuildChannel) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.channel_create(ctx.clone(), channel.clone()).await
+        }
+    }
+
+    async fn channel_delete(&self, ctx: Context, channel: GuildChannel, messages: Option<Vec<Message>>) {
+        for module in self.shared_data.modules.read().await.deref() {
+            module.module.channel_delete(ctx.clone(), channel.clone(), messages.clone()).await
         }
     }
 

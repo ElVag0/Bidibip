@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::{Arc};
+use std::time::Duration;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelType, CommandInteraction, CommandOptionType, Context, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Mentionable, ResolvedValue, User};
+use serenity::all::{ChannelId, ChannelType, CommandInteraction, CommandOptionType, Context, CreateActionRow, CreateCommandOption, CreateEmbedAuthor, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, GetMessages, GuildChannel, GuildId, Member, Mentionable, Message, MessageId, PartialGuildChannel, ResolvedValue};
+use serenity::all::colours::roles::GREEN;
+use serenity::builder::{CreateButton, CreateEmbed};
 use tokio::sync::RwLock;
-use tracing::error;
+use tokio::time::sleep;
+use tracing::{error};
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::module::{BidibipSharedData, PermissionData};
-use crate::core::utilities::{OptionHelper, Username};
+use crate::core::utilities::{CommandHelper, OptionHelper, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 
 pub struct Repost {
@@ -18,16 +23,16 @@ pub struct Repost {
 
 #[derive(Default, Serialize, Deserialize)]
 struct VoteConfig {
-    reposted_message: u64,
+    reposted_message: HashSet<u64>,
     vote_message: u64,
     yes: HashMap<u64, Username>,
     no: HashMap<u64, Username>,
 }
 
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 struct RepostChannelConfig {
-    repost_channel: u64,
+    repost_channel: HashSet<u64>,
     vote_enabled: bool,
 }
 
@@ -39,8 +44,167 @@ struct RepostConfig {
     votes: HashMap<u64, VoteConfig>,
 }
 
+fn find_urls(initial_text: &String) -> Vec<String> {
+    let split = initial_text.split_whitespace();
+    let mut attachments = vec![];
+    for i in split {
+        if i.contains("http") {
+            attachments.push(i.to_string());
+        }
+    }
+    attachments.reverse();
+    attachments
+}
+
+fn make_repost_message(source_message: &Message, thread: &GuildChannel, forum_name: &String, author_member: &Member) -> Vec<CreateMessage> {
+    let mut messages = vec![];
+    let mut embeds = vec![];
+
+    let mut urls = find_urls(&source_message.content);
+
+    for attachment in &source_message.attachments {
+        urls.push(attachment.url.clone());
+    }
+
+    let mut author = CreateEmbedAuthor::new(author_member.display_name());
+    if let Some(thumbnail) = author_member.user.avatar_url() {
+        author = author.icon_url(thumbnail);
+    }
+
+    let mut first_embed = CreateEmbed::new()
+        .color(GREEN)
+        .title(thread.name.clone())
+        .description(source_message.content.truncate_text(4096));
+    for (i, url) in urls.iter().enumerate() { // only for first image
+        if url.matches(r#".(jpg|jpeg|png|webp|avif|gif)$"#).count() > 0 {
+            first_embed = first_embed.image(url);
+            urls.remove(i);
+            break;
+        }
+    }
+
+    for url in &urls { // only for first image
+        if !url.matches(r#".(mp4|mov|avi|mkv|flv|jpg|jpeg|png|webp|avif|gif)$"#).count() > 0 {
+            author = author.url(url);
+            break;
+        }
+    }
+
+    first_embed = first_embed.author(author);
+
+    embeds.push(first_embed);
+
+    messages.push(CreateMessage::new()
+        .content(format!("Nouveau post dans {} : {}", forum_name, source_message.link()))
+        .embeds(embeds));
+
+    // Add remaining hyperlinks as message (one message per link)
+    for url in urls {
+        messages.push(CreateMessage::new().content(url));
+    }
+
+    // Add link button to last message
+    if let Some(last) = messages.pop().clone() {
+        messages.push(last.components(vec![CreateActionRow::Buttons(vec![CreateButton::new_link(source_message.link()).label("Viens donc voir !")])]))
+    }
+
+    messages
+}
+
+
+impl Repost {
+    fn update_vote_messages(&self, _: GuildChannel) {}
+}
+
 #[serenity::async_trait]
-impl EventHandler for Repost {}
+impl EventHandler for Repost {
+    async fn thread_create(&self, ctx: Context, thread: GuildChannel) {
+        if thread.kind == ChannelType::PublicThread {
+            if let Some(parent) = thread.parent_id {
+                sleep(Duration::from_secs(1)).await;
+
+                let mut config = self.repost_config.write().await;
+                if config.votes.contains_key(&thread.id.get()) {
+                    return;
+                }
+
+                let repost_config = match config.forums.get(&parent.get()) {
+                    None => { return error!("Failed to get repost config"); }
+                    Some(repost_config) => { repost_config.clone() }
+                };
+
+                let messages = match thread.messages(&ctx.http, GetMessages::new().limit(1)).await {
+                    Ok(messages) => { messages }
+                    Err(err) => { return error!("Failed to get first messages in thread : {}", err) }
+                };
+
+                let initial_message = match messages.first() {
+                    None => { return error!("Failed to get first message in thread :") }
+                    Some(initial_message) => { initial_message }
+                };
+
+                let thread_owner = match thread.owner_id {
+                    None => { return error!("Failed to get owner id"); }
+                    Some(user) => {
+                        match GuildId::from(self.config.server_id).member(&ctx.http, user).await {
+                            Ok(member) => { member }
+                            Err(err) => { return error!("Failed to get owner member : {}", err); }
+                        }
+                    }
+                };
+                let name = match parent.name(&ctx.http).await {
+                    Ok(name) => { name }
+                    Err(err) => { return error!("Failed to get forum name {}", err); }
+                };
+
+
+                if repost_config.vote_enabled {
+                    let vote_message = match thread.send_message(&ctx.http, CreateMessage::new().content("Vote en réagissant au post !")).await {
+                        Ok(message) => { message }
+                        Err(err) => { return error!("Failed to send vote message, {}", err); }
+                    };
+
+                    config.votes.insert(thread.id.get(), VoteConfig {
+                        reposted_message: HashSet::new(),
+                        vote_message: vote_message.id.get(),
+                        yes: Default::default(),
+                        no: Default::default(),
+                    });
+                }
+
+                for repost_channel in repost_config.repost_channel {
+                    let mut last_repost_message = None;
+                    for message in make_repost_message(&initial_message, &thread, &name, &thread_owner) {
+                        match ChannelId::from(repost_channel).send_message(&ctx.http, message).await {
+                            Ok(message) => { last_repost_message = Some(message) }
+                            Err(err) => { return error!("Failed to repost message in {} : {}", ChannelId::from(repost_channel).mention(), err); }
+                        }
+                    }
+
+                    if repost_config.vote_enabled {
+                        let last_repost_message = match last_repost_message {
+                            None => { return error!("Failed to get last repost message"); }
+                            Some(last_repost_message) => { last_repost_message }
+                        };
+                        match config.votes.get_mut(&thread.id.get()) {
+                            None => { return error!("Failed to register last reposted message"); }
+                            Some(thread) => { thread.reposted_message.insert(last_repost_message.id.get()); }
+                        }
+                    }
+                }
+
+                if repost_config.vote_enabled {
+                    if let Err(err) = self.config.save_module_config::<Repost, RepostConfig>(&config) {
+                        error!("Failed to save repost config : {}", err)
+                    }
+                    self.update_vote_messages(thread);
+                }
+            }
+        }
+    }
+
+    async fn thread_delete(&self, _: Context, _: PartialGuildChannel, _: Option<GuildChannel>) {}
+}
 
 #[serenity::async_trait]
 impl BidibipModule for Repost {
@@ -99,11 +263,12 @@ impl BidibipModule for Repost {
 
                 if enabled {
                     let mut repost_config = self.repost_config.write().await;
-                    repost_config.forums.remove(&forum.get());
-                    repost_config.forums.insert(forum.get(), RepostChannelConfig {
-                        repost_channel: channel.get(),
-                        vote_enabled: vote,
+                    let data = repost_config.forums.entry(forum.get()).or_insert(RepostChannelConfig {
+                        repost_channel: HashSet::new(),
+                        vote_enabled: false,
                     });
+                    data.repost_channel.insert(channel.get());
+                    data.vote_enabled = vote;
                     if let Err(err) = self.config.save_module_config::<Repost, RepostConfig>(&repost_config) {
                         return error!("Failed to save repost config {}", err);
                     }
@@ -121,7 +286,92 @@ impl BidibipModule for Repost {
                     }
                 }
             }
-            "reposte" => {}
+            "reposte" => {
+                let thread = match command.channel_id.to_channel(&ctx.http).await {
+                    Ok(thread) => {
+                        match thread.guild() {
+                            None => { return error!("Failed to get guild thread") }
+                            Some(guild) => { guild }
+                        }
+                    }
+                    Err(err) => { return error!("Failed to get thread : {}", err) }
+                };
+
+                let reposted_message = match &command.data.options().find("message") {
+                    None => { return error!("Missing option 'message'") }
+                    Some(message) => {
+                        if let ResolvedValue::String(message) = message {
+                            let id = match message.split("/").last() {
+                                None => { message }
+                                Some(last) => { last }
+                            };
+                            match u64::from_str(id) {
+                                Ok(id) => {
+                                    match thread.message(&ctx.http, MessageId::from(id)).await {
+                                        Ok(message) => { message }
+                                        Err(err) => { return command.respond_user_error(&ctx.http, format!("Le message fourni n'est pas valid : {}", err)).await; }
+                                    }
+                                }
+                                Err(_) => {
+                                    return command.respond_user_error(&ctx.http, "L'option message doit être un identifiant de message ou le lien vers le message").await;
+                                }
+                            }
+                        } else { return error!("Not a stringValue"); }
+                    }
+                };
+
+                let forum = match thread.parent_id {
+                    None => {
+                        return command.respond_user_error(&ctx.http, "La commande doit être exécutée depuis un fil qui t'appartient").await;
+                    }
+                    Some(forum) => {
+                        match forum.to_channel(&ctx.http).await {
+                            Ok(forum) => {
+                                match forum.guild() {
+                                    None => { return error!("Channel is not a guild channel") }
+                                    Some(channel) => { channel }
+                                }
+                            }
+                            Err(err) => { return error!("Failed to get forum data : {}", err) }
+                        }
+                    }
+                };
+
+                let mut config = self.repost_config.write().await;
+                let repost_config = match config.forums.get(&forum.id.get()) {
+                    None => {
+                        return command.respond_user_error(&ctx.http, "La fonctionnalité de reposte n'est pas activée ici").await;
+                    }
+                    Some(forum_config) => { forum_config.clone() }
+                };
+
+                let member = match &command.member {
+                    None => { return error!("Invalid member") }
+                    Some(member) => { member.clone() }
+                };
+
+                for repost_channel in &repost_config.repost_channel {
+                    for message in make_repost_message(&reposted_message, &thread, &forum.name, member.as_ref()) {
+                        match ChannelId::new(*repost_channel).send_message(&ctx.http, message).await {
+                            Ok(message) => {
+                                if let Some(votes) = config.votes.get_mut(&thread.id.get()) {
+                                    votes.reposted_message.insert(message.id.get());
+                                }
+                            }
+                            Err(err) => { return error!("Failed to repost message in {} : {}", ChannelId::new(*repost_channel).mention(), err); }
+                        }
+                    }
+                }
+                if repost_config.vote_enabled {
+                    if let Err(err) = self.config.save_module_config::<Repost, RepostConfig>(&config) {
+                        return error!("Failed to save repost config : {}", err)
+                    }
+                    self.update_vote_messages(thread);
+                }
+                if let Err(err) = command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Message reposté !"))).await {
+                    error!("Failed to send confirmation message : {}", err)
+                }
+            }
             &_ => {}
         }
     }

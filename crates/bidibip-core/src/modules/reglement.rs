@@ -6,7 +6,7 @@ use tracing::error;
 use crate::core::config::Config;
 use crate::core::json_to_message::json_to_message;
 use crate::core::module::BidibipSharedData;
-use crate::core::utilities::{CommandHelper, ResultDebug};
+use crate::core::utilities::{ResultDebug};
 use crate::modules::{BidibipModule, LoadModule};
 
 pub struct Reglement {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Context, CreateMessage, EventHandler, GuildId, Member, Mentionable, User};
 use crate::core::module::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
-use rand::seq::SliceRandom;
+use rand::seq::{IndexedRandom};
 use tracing::error;
 
 pub struct Welcome {
@@ -38,7 +38,7 @@ impl LoadModule<Welcome> for Welcome {
 #[serenity::async_trait]
 impl EventHandler for Welcome {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        let mut sentence = match self.welcome_config.welcome_messages.choose(&mut rand::thread_rng()) {
+        let mut sentence = match self.welcome_config.welcome_messages.choose(&mut rand::rng()) {
             None => {String::from("Bienvenue parmi nous {} :wave: !")}
             Some(sentence) => {sentence.clone()}
         };
@@ -50,7 +50,7 @@ impl EventHandler for Welcome {
     }
 
     async fn guild_member_removal(&self, ctx: Context, _: GuildId, user: User, _: Option<Member>) {
-        let sentence = match self.welcome_config.leave_messages.choose(&mut rand::thread_rng()) {
+        let sentence = match self.welcome_config.leave_messages.choose(&mut rand::rng()) {
             None => {String::from("{} nous a quitté !")}
             Some(sentence) => {sentence.clone()}
         };
