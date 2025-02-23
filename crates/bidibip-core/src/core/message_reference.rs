@@ -1,7 +1,7 @@
 use std::hash::{Hash};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Http, Message, MessageId};
+use serenity::all::{ChannelId, GuildId, Http, Message, MessageId};
 use serenity::Error;
 
 #[derive(Default, Copy, Clone, Serialize, Deserialize, Hash, Eq)]
@@ -26,6 +26,11 @@ impl MessageReference {
             id,
             channel,
         }
+    }
+
+    #[allow(unused)]
+    pub fn link(&self, guild: GuildId) -> String {
+        self.id.link(self.channel, Some(guild))
     }
 
     #[allow(unused)]

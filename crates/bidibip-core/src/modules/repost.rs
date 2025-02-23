@@ -137,9 +137,9 @@ impl Repost {
             let yes = config.yes.len();
 
             let mut vote_buttons = vec![
-                CreateButton::new(make_custom_id::<Repost>("vote-yes", Some(thread.id))).style(ButtonStyle::Success).label(format!("Pour ✅ {yes}")),
-                CreateButton::new(make_custom_id::<Repost>("vote-no", Some(thread.id))).style(ButtonStyle::Danger).label(format!("Contre ❌ {no}")),
-                CreateButton::new(make_custom_id::<Repost>("see-votes", Some(thread.id))).style(ButtonStyle::Secondary).label("Voir les votes".to_string()),
+                CreateButton::new(make_custom_id::<Repost>("vote-yes", thread.id)).style(ButtonStyle::Success).label(format!("Pour ✅ {yes}")),
+                CreateButton::new(make_custom_id::<Repost>("vote-no", thread.id)).style(ButtonStyle::Danger).label(format!("Contre ❌ {no}")),
+                CreateButton::new(make_custom_id::<Repost>("see-votes", thread.id)).style(ButtonStyle::Secondary).label("Voir les votes".to_string()),
             ];
 
             let mut message = config.vote_message.message(&ctx.http).await?;

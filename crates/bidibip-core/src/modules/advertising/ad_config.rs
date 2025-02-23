@@ -1,17 +1,19 @@
 use serde::{Deserialize, Serialize};
 use crate::core::utilities::Username;
 
-#[derive(Serialize, Deserialize)]
-pub struct Ad {
-    title: String,
-    studio: Option<String>,
-    remote: IsRemote,
-    compensation: Compensation,
-    description: String,
-    responsibilities: String,
-    qualifications: String,
-    apply_at: ApplyAt,
-    other_urls: Vec<String>
+#[derive(Serialize, Deserialize, Default)]
+pub struct AdDescription {
+    pub is_searching: Option<bool>,
+    pub kind: Option<Contract>,
+    pub location: Option<Location>,
+    pub studio: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub duration: Option<String>,
+    pub responsibilities: Option<String>,
+    pub qualifications: Option<String>,
+    pub apply_at: Option<ApplyAt>,
+    pub other_urls: Option<Vec<String>>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -22,7 +24,7 @@ pub enum ApplyAt {
 
 
 #[derive(Serialize, Deserialize)]
-pub enum IsRemote {
+pub enum Location {
     Remote,
     Unspecified,
     OnSiteFlex(String),
@@ -45,9 +47,9 @@ pub enum Compensation {
 }
 
 #[derive(Serialize, Deserialize)]
-pub enum AdInfo {
+pub enum Contract {
     Volunteering,
-    Internship,
+    Internship(bool), // paid or not
     Freelance,
     WorkStudy,
     FixedTerm(FixedTermInfos), // CDD
