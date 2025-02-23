@@ -4,7 +4,7 @@ use std::sync::{Arc};
 use std::time::Duration;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, CommandOptionType, ComponentInteractionDataKind, Context, CreateActionRow, CreateCommandOption, CreateEmbedAuthor, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditChannel, EditInteractionResponse, EditMessage, EventHandler, GetMessages, GuildChannel, GuildId, Interaction, Member, Mentionable, Message, MessageId, PartialGuildChannel, ResolvedValue, UserId};
+use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, CommandOptionType, ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateCommandOption, CreateEmbedAuthor, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditChannel, EditInteractionResponse, EditMessage, GetMessages, GuildChannel, GuildId, Interaction, Member, Mentionable, Message, MessageId, PartialGuildChannel, ResolvedValue, UserId};
 use serenity::all::colours::roles::GREEN;
 use serenity::builder::{CreateButton, CreateEmbed};
 use tokio::sync::RwLock;
@@ -12,11 +12,13 @@ use tokio::time::sleep;
 use tracing::{error};
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
+use crate::core::error::BidibipError;
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{CommandHelper, OptionHelper, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
+use crate::{assert_condition, assert_some, on_fail};
 
 pub struct Repost {
     config: Arc<Config>,
@@ -118,7 +120,7 @@ fn make_repost_message(source_message: &Message, thread: &GuildChannel, forum_na
 
 
 impl Repost {
-    async fn update_vote_messages(&self, ctx: &Context, thread: GuildChannel, config: &RepostConfig) -> Result<(), Error> {
+    async fn update_vote_messages(&self, ctx: &Context, thread: GuildChannel, config: &RepostConfig) -> Result<(), BidibipError> {
         if let Some(config) = config.votes.get(&thread.id) {
             let cfg = config.clone();
             let http = ctx.http.clone();
@@ -161,273 +163,63 @@ impl Repost {
             Ok(())
         }
     }
-}
 
-#[serenity::async_trait]
-impl EventHandler for Repost {
-    async fn thread_create(&self, ctx: Context, thread: GuildChannel) {
-        if thread.kind == ChannelType::PublicThread {
-            if let Some(parent) = thread.parent_id {
-                sleep(Duration::from_secs(1)).await;
-
-                let mut config = self.repost_config.write().await;
-                if config.votes.contains_key(&thread.id) {
-                    return;
+    async fn user_vote(&self, ctx: Context, channel: ChannelId, component: ComponentInteraction, is_yes: bool) -> Result<(), BidibipError> {
+        let mut config = self.repost_config.write().await;
+        if let Some(vote_config) = config.votes.get_mut(&channel) {
+            if is_yes {
+                vote_config.no.remove(&component.user.id);
+                if vote_config.yes.contains_key(&component.user.id) {
+                    vote_config.yes.remove(&component.user.id);
+                } else {
+                    vote_config.yes.insert(component.user.id, Username::from_user(&component.user));
                 }
 
-                let repost_config = match config.forums.get(&parent) {
-                    None => { return error!("Failed to get repost config"); }
-                    Some(repost_config) => { repost_config.clone() }
-                };
-
-                let messages = match thread.messages(&ctx.http, GetMessages::new().limit(1)).await {
-                    Ok(messages) => { messages }
-                    Err(err) => { return error!("Failed to get first messages in thread : {}", err) }
-                };
-
-                let initial_message = match messages.first() {
-                    None => { return error!("Failed to get first message in thread :") }
-                    Some(initial_message) => { initial_message }
-                };
-
-                let thread_owner = match thread.owner_id {
-                    None => { return error!("Failed to get owner id"); }
-                    Some(user) => {
-                        match GuildId::from(self.config.server_id).member(&ctx.http, user).await {
-                            Ok(member) => { member }
-                            Err(err) => { return error!("Failed to get owner member : {}", err); }
-                        }
-                    }
-                };
-                let forum_name = match parent.name(&ctx.http).await {
-                    Ok(name) => { name }
-                    Err(err) => { return error!("Failed to get forum name {}", err); }
-                };
-
-
-                if repost_config.vote_enabled {
-                    let vote_message = match thread.send_message(&ctx.http, CreateMessage::new().content("Vote en réagissant au post !")).await {
-                        Ok(message) => { message }
-                        Err(err) => { return error!("Failed to send vote message, {}", err); }
-                    };
-
-                    config.votes.insert(thread.id, VoteConfig {
-                        thread_name: thread.name.clone(),
-                        source_message_url: initial_message.link(),
-                        source_thread: thread.id,
-                        reposted_message: HashSet::new(),
-                        vote_message: vote_message.into(),
-                        yes: Default::default(),
-                        no: Default::default(),
-                    });
+                let channel = on_fail!(vote_config.source_thread.to_channel(&ctx.http).await, "Failed to get source channel")?;
+                let guild = assert_some!(channel.guild(), "Failed to get guild channel")?;
+                on_fail!(self.update_vote_messages(&ctx, guild, &config).await, "Failed to update vote messages")?;
+            } else {
+                vote_config.yes.remove(&component.user.id);
+                if vote_config.no.contains_key(&component.user.id) {
+                    vote_config.no.remove(&component.user.id);
+                } else {
+                    vote_config.no.insert(component.user.id, Username::from_user(&component.user));
                 }
-
-                for repost_channel in repost_config.repost_channel {
-                    let mut last_repost_message = None;
-                    for message in make_repost_message(&initial_message, &thread, &forum_name, &thread_owner) {
-                        match repost_channel.send_message(&ctx.http, message).await {
-                            Ok(message) => { last_repost_message = Some(message) }
-                            Err(err) => { return error!("Failed to repost message in {} : {}", repost_channel.mention(), err); }
-                        }
-                    }
-
-                    if repost_config.vote_enabled {
-                        let last_repost_message = match last_repost_message {
-                            None => { return error!("Failed to get last repost message"); }
-                            Some(last_repost_message) => { last_repost_message }
-                        };
-                        match config.votes.get_mut(&thread.id) {
-                            None => { return error!("Failed to register last reposted message"); }
-                            Some(thread) => { thread.reposted_message.insert(last_repost_message.into()); }
-                        }
-                    }
-                }
-
-                if repost_config.vote_enabled {
-                    if let Err(err) = self.save_config(&config).await {
-                        return error!("{}", err);
-                    }
-                    if let Err(err) = self.update_vote_messages(&ctx, thread, &config).await {
-                        error!("Failed to update vote messages : {}", err)
-                    }
-                }
+                let channel = on_fail!(vote_config.source_thread.to_channel(&ctx.http).await, "Failed to get source channel")?;
+                let guild = assert_some!(channel.guild(), "Failed to get guild channel")?;
+                on_fail!(self.update_vote_messages(&ctx, guild, &config).await, "Failed to update vote messages")?;
             }
         }
-    }
-
-    async fn channel_delete(&self, _: Context, channel: GuildChannel, _: Option<Vec<Message>>) {
-        // On delete forum
-        if self.repost_config.read().await.forums.contains_key(&channel.id) {
-            let mut config = self.repost_config.write().await;
-            config.forums.remove(&channel.id);
-            if let Err(err) = self.save_config(&config).await {
-                error!("{}", err)
-            }
-        }
-    }
-
-    async fn thread_delete(&self, _: Context, channel: PartialGuildChannel, _: Option<GuildChannel>) {
-        // On delete thread
-        if self.repost_config.read().await.votes.contains_key(&channel.id) {
-            let mut config = self.repost_config.write().await;
-            config.votes.remove(&channel.id);
-            if let Err(err) = self.save_config(&config).await {
-                error!("{}", err);
-            }
-        }
-    }
-
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        match interaction {
-            Interaction::Component(component) => {
-                match component.data.kind {
-                    ComponentInteractionDataKind::Button => {
-                        if let Some(data) = component.data.get_custom_id_data::<Repost>("vote-yes") {
-                            let id = ChannelId::new(match u64::from_str(data.as_str()) {
-                                Ok(id) => { id }
-                                Err(err) => { return error!("Payload is not an id : {}", err) }
-                            });
-
-                            let mut config = self.repost_config.write().await;
-                            if let Some(vote_config) = config.votes.get_mut(&id) {
-                                vote_config.no.remove(&component.user.id);
-                                if vote_config.yes.contains_key(&component.user.id) {
-                                    vote_config.yes.remove(&component.user.id);
-                                } else {
-                                    vote_config.yes.insert(component.user.id, Username::from_user(&component.user));
-                                }
-
-                                match vote_config.source_thread.to_channel(&ctx.http).await {
-                                    Ok(channel) => {
-                                        match channel.guild() {
-                                            None => { return error!("Failed to get guild channel") }
-                                            Some(guild) => {
-                                                if let Err(err) = self.update_vote_messages(&ctx, guild, &config).await {
-                                                    return error!("Failed to update vote messages : {}", err);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(err) => { return error!("Failed to get source channel : {}", err) }
-                                }
-                            }
-                            if let Err(err) = self.save_config(&config).await { return error!("{}", err); }
-                            if let Err(err) = component.create_response(&ctx.http,
-                                                                        CreateInteractionResponse::Message(
+        on_fail!(self.save_config(&config).await, "failed to save config")?;
+        on_fail!(component.create_response(&ctx.http,CreateInteractionResponse::Message(
                                                                             CreateInteractionResponseMessage::new()
                                                                                 .ephemeral(true)
-                                                                                .content("Ton vote a bien été pris en compte !"))).await {
-                                error!("Failed to send interaction response : {}", err)
-                            }
-                        } else if let Some(data) = component.data.get_custom_id_data::<Repost>("vote-no") {
-                            let id = ChannelId::new(match u64::from_str(data.as_str()) {
-                                Ok(id) => { id }
-                                Err(err) => { return error!("Payload is not an id : {}", err) }
-                            });
-
-                            let mut config = self.repost_config.write().await;
-                            if let Some(vote_config) = config.votes.get_mut(&id) {
-                                vote_config.yes.remove(&component.user.id);
-                                if vote_config.no.contains_key(&component.user.id) {
-                                    vote_config.no.remove(&component.user.id);
-                                } else {
-                                    vote_config.no.insert(component.user.id, Username::from_user(&component.user));
-                                }
-
-                                match vote_config.source_thread.to_channel(&ctx.http).await {
-                                    Ok(channel) => {
-                                        match channel.guild() {
-                                            None => { return error!("Failed to get guild channel") }
-                                            Some(guild) => {
-                                                if let Err(err) = self.update_vote_messages(&ctx, guild, &config).await {
-                                                    return error!("Failed to update vote messages : {}", err);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(err) => { return error!("Failed to get source channel : {}", err) }
-                                }
-                            }
-                            if let Err(err) = self.save_config(&config).await { return error!("{}", err); }
-                            if let Err(err) = component.create_response(&ctx.http,
-                                                                        CreateInteractionResponse::Message(
-                                                                            CreateInteractionResponseMessage::new()
-                                                                                .ephemeral(true)
-                                                                                .content("Ton vote a bien été pris en compte !"))).await {
-                                error!("Failed to send interaction response : {}", err)
-                            }
-                        } else if let Some(data) = component.data.get_custom_id_data::<Repost>("see-votes") {
-                            let id = ChannelId::new(match u64::from_str(data.as_str()) {
-                                Ok(id) => { id }
-                                Err(err) => { return error!("Payload is not an id : {}", err) }
-                            });
-
-                            let mut config = self.repost_config.write().await;
-                            if let Some(vote_config) = config.votes.get_mut(&id) {
-                                let mut y_str = String::new();
-                                let mut n_str = String::new();
-
-                                for y in &vote_config.yes {
-                                    y_str += format!("{}\n", y.1.full()).as_str();
-                                }
-                                for n in &vote_config.no {
-                                    n_str += format!("{}\n", n.1.full()).as_str();
-                                }
-
-                                if let Err(err) = component
-                                    .create_response(&ctx.http,
-                                                     CreateInteractionResponse::Message(
-                                                         CreateInteractionResponseMessage::new()
-                                                             .ephemeral(true)
-                                                             .embed(CreateEmbed::new()
-                                                                 .title("Votes actuels")
-                                                                 .description(format!("Nombre de votes : {}", vote_config.yes.len() + vote_config.no.len()))
-                                                                 .field("Pour ✅", y_str, true)
-                                                                 .field("Contre ❌", n_str, true)))).await {
-                                    error!("Failed to send interaction response : {}", err)
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
+                                                                                .content("Ton vote a bien été pris en compte !"))).await, "Failed to send interaction response")?;
+        Ok(())
     }
 }
 
 #[serenity::async_trait]
 impl BidibipModule for Repost {
-    async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) {
+    async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         match name {
             "set-forum-link" => {
-                let forum = match command.data.options().find("forum") {
-                    None => { return error!("missing forum parameter"); }
-                    Some(forum) => {
-                        if let ResolvedValue::Channel(channel) = forum {
-                            if channel.kind != ChannelType::Forum {
-                                return error!("Not a forum");
-                            }
-                            channel.id
-                        } else {
-                            return error!("forum parameter is not a channel");
-                        }
-                    }
+                let forum = assert_some!(command.data.options().find("forum"), "missing forum parameter")?;
+                let forum = if let ResolvedValue::Channel(channel) = forum {
+                    assert_condition!(channel.kind == ChannelType::Forum, "Not a forum")?;
+                    channel.id
+                } else {
+                    error!("forum parameter is not a channel");
+                    return Err(BidibipError::msg("forum parameter is not a channel"));
                 };
 
-                let channel = match command.data.options().find("repost-channel") {
-                    None => { return error!("missing repost-channel parameter"); }
-                    Some(forum) => {
-                        if let ResolvedValue::Channel(channel) = forum {
-                            if channel.kind != ChannelType::Text {
-                                return error!("Not a regular channel");
-                            }
-                            channel.id
-                        } else {
-                            return error!("repost-channel parameter is not a channel");
-                        }
-                    }
+                let forum_param = assert_some!(command.data.options().find("repost-channel"), "missing repost-channel parameter")?;
+                let channel = if let ResolvedValue::Channel(channel) = forum_param {
+                    assert_condition!(channel.kind == ChannelType::Text, "Not a regular channel")?;
+                    channel.id
+                } else {
+                    error!("repost-channel parameter is not a channel");
+                    return Err(BidibipError::msg("repost-channel parameter is not a channel"));
                 };
 
                 let vote = match command.data.options().find("vote") {
@@ -436,7 +228,8 @@ impl BidibipModule for Repost {
                         if let ResolvedValue::Boolean(vote) = vote {
                             vote
                         } else {
-                            return error!("vote option is not a boolean");
+                            error!("vote option is not a boolean");
+                            return Err(BidibipError::msg("vote option is not a boolean"));
                         }
                     }
                 };
@@ -447,7 +240,8 @@ impl BidibipModule for Repost {
                         if let ResolvedValue::Boolean(enabled) = enabled {
                             enabled
                         } else {
-                            return error!("Enable option is not a boolean");
+                            error!("Enable option is not a boolean");
+                            return Err(BidibipError::msg("Enable option is not a boolean"));
                         }
                     }
                 };
@@ -460,112 +254,84 @@ impl BidibipModule for Repost {
                     });
                     data.repost_channel.insert(channel);
                     data.vote_enabled = vote;
-                    if let Err(err) = self.save_config(&repost_config).await { return error!("{}", err); }
-                    if let Err(err) = command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} connecté du channel {} !", forum.mention(), channel.mention())))).await {
-                        error!("Failed to send confirmation message {}", err)
-                    }
+                    on_fail!(self.save_config(&repost_config).await, "Failed to save config")?;
+                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} connecté du channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
                 } else {
                     let mut repost_config = self.repost_config.write().await;
                     repost_config.forums.remove(&forum);
-                    if let Err(err) = self.save_config(&repost_config).await { return error!("{}", err); }
-                    if let Err(err) = command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} déconnecté au channel {} !", forum.mention(), channel.mention())))).await {
-                        error!("Failed to send confirmation message {}", err)
-                    }
+                    on_fail!(self.save_config(&repost_config).await, "Failed to save config")?;
+                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} déconnecté au channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
                 }
             }
             "reposte" => {
-                if let Err(err) = command.defer_ephemeral(&ctx.http).await {
-                    return error!("Failed to defer command interaction : {}", err);
-                }
-                let thread = match command.channel_id.to_channel(&ctx.http).await {
-                    Ok(thread) => {
-                        match thread.guild() {
-                            None => { return error!("Failed to get guild thread") }
-                            Some(guild) => { guild }
-                        }
-                    }
-                    Err(err) => { return error!("Failed to get thread : {}", err) }
-                };
+                on_fail!(command.defer_ephemeral(&ctx.http).await, "Failed to defer command interaction")?;
+                let thread = assert_some!(on_fail!(command.channel_id.to_channel(&ctx.http).await, "Failed to get thread")?.guild(), "Failed to get guild thread")?;
 
-                let reposted_message = match &command.data.options().find("message") {
-                    None => { return error!("Missing option 'message'") }
-                    Some(message) => {
-                        if let ResolvedValue::String(message) = message {
-                            let id = match message.split("/").last() {
-                                None => { message }
-                                Some(last) => { last }
-                            };
-                            match u64::from_str(id) {
-                                Ok(id) => {
-                                    match thread.message(&ctx.http, MessageId::from(id)).await {
-                                        Ok(message) => { message }
-                                        Err(err) => { return command.respond_user_error(&ctx.http, format!("Le message fourni n'est pas valid : {}", err)).await; }
-                                    }
-                                }
-                                Err(_) => {
-                                    return command.respond_user_error(&ctx.http, "L'option message doit être un identifiant de message ou le lien vers le message").await;
+                let message = &assert_some!(command.data.options().find("message"), "Missing option 'message'")?;
+
+                let reposted_message = if let ResolvedValue::String(message) = message {
+                    let id = match message.split("/").last() {
+                        None => { message }
+                        Some(last) => { last }
+                    };
+                    match u64::from_str(id) {
+                        Ok(id) => {
+                            match thread.message(&ctx.http, MessageId::from(id)).await {
+                                Ok(message) => { message }
+                                Err(err) => {
+                                    command.respond_user_error(&ctx.http, format!("Le message fourni n'est pas valid : {}", err)).await;
+                                    return Ok(());
                                 }
                             }
-                        } else { return error!("Not a stringValue"); }
+                        }
+                        Err(_) => {
+                            command.respond_user_error(&ctx.http, "L'option message doit être un identifiant de message ou le lien vers le message").await;
+                            return Ok(());
+                        }
                     }
+                } else {
+                    error!("Not a stringValue");
+                    return Err(BidibipError::msg("Not a stringValue"));
                 };
 
                 let forum = match thread.parent_id {
                     None => {
-                        return command.respond_user_error(&ctx.http, "La commande doit être exécutée depuis un fil qui t'appartient").await;
+                        command.respond_user_error(&ctx.http, "La commande doit être exécutée depuis un fil qui t'appartient").await;
+                        return Ok(());
                     }
                     Some(forum) => {
-                        match forum.to_channel(&ctx.http).await {
-                            Ok(forum) => {
-                                match forum.guild() {
-                                    None => { return error!("Channel is not a guild channel") }
-                                    Some(channel) => { channel }
-                                }
-                            }
-                            Err(err) => { return error!("Failed to get forum data : {}", err) }
-                        }
+                        assert_some!(on_fail!(forum.to_channel(&ctx.http).await, "Failed to get forum data")?.guild(), "Channel is not a guild channel")?
                     }
                 };
 
                 let mut config = self.repost_config.write().await;
                 let repost_config = match config.forums.get(&forum.id) {
                     None => {
-                        return command.respond_user_error(&ctx.http, "La fonctionnalité de reposte n'est pas activée ici").await;
+                        command.respond_user_error(&ctx.http, "La fonctionnalité de reposte n'est pas activée ici").await;
+                        return Ok(());
                     }
                     Some(forum_config) => { forum_config.clone() }
                 };
 
-                let member = match &command.member {
-                    None => { return error!("Invalid member") }
-                    Some(member) => { member.clone() }
-                };
+                let member = assert_some!(&command.member, "Invalid member")?;
 
                 for repost_channel in &repost_config.repost_channel {
                     for message in make_repost_message(&reposted_message, &thread, &forum.name, member.as_ref()) {
-                        match repost_channel.send_message(&ctx.http, message).await {
-                            Ok(message) => {
-                                if let Some(votes) = config.votes.get_mut(&thread.id) {
-                                    votes.reposted_message.insert(message.into());
-                                }
-                            }
-                            Err(err) => { return error!("Failed to repost message in {} : {}", repost_channel.mention(), err); }
+                        let message = on_fail!(repost_channel.send_message(&ctx.http, message).await, format!("Failed to repost message in {}", repost_channel.mention()))?;
+                        if let Some(votes) = config.votes.get_mut(&thread.id) {
+                            votes.reposted_message.insert(message.into());
                         }
                     }
                 }
                 if repost_config.vote_enabled {
-                    if let Err(err) = self.save_config(&config).await { return error!("{}", err); }
-                    if let Err(err) = self.update_vote_messages(&ctx, thread, &config).await {
-                        error!("Failed to update vote messages : {}", err)
-                    }
+                    on_fail!(self.save_config(&config).await, "Failed to save config")?;
+                    on_fail!(self.update_vote_messages(&ctx, thread, &config).await, "Failed to update vote messages")?;
                 }
-                println!("au bout");
-
-                if let Err(err) = command.edit_response(&ctx.http, EditInteractionResponse::new().content("Message reposté !")).await {
-                    error!("Failed to send confirmation message : {}", err)
-                }
+                on_fail!(command.edit_response(&ctx.http, EditInteractionResponse::new().content("Message reposté !")).await, "Failed to send confirmation message")?;
             }
             &_ => {}
         }
+        Ok(())
     }
 
     fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
@@ -581,6 +347,122 @@ impl BidibipModule for Repost {
                  .add_option(CreateCommandOption::new(CommandOptionType::String, "message", "lien du message à promouvoir").required(true))
                  .default_member_permissions(config.at_least_member())
         ]
+    }
+
+    async fn channel_delete(&self, _: Context, channel: GuildChannel, _: Option<Vec<Message>>) -> Result<(), BidibipError> {
+        // On delete forum
+        if self.repost_config.read().await.forums.contains_key(&channel.id) {
+            let mut config = self.repost_config.write().await;
+            config.forums.remove(&channel.id);
+            on_fail!(self.save_config(&config).await, "Failed to delete channel")?;
+        }
+        Ok(())
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) -> Result<(), BidibipError> {
+        match interaction {
+            Interaction::Component(component) => {
+                match component.data.kind {
+                    ComponentInteractionDataKind::Button => {
+                        if let Some(data) = component.data.get_custom_id_data::<Repost>("vote-yes") {
+                            self.user_vote(ctx, ChannelId::new(on_fail!(u64::from_str(data.as_str()), "Payload is not an id")?), component, true).await?;
+                        } else if let Some(data) = component.data.get_custom_id_data::<Repost>("vote-no") {
+                            self.user_vote(ctx, ChannelId::new(on_fail!(u64::from_str(data.as_str()), "Payload is not an id")?), component, false).await?;
+                        } else if let Some(data) = component.data.get_custom_id_data::<Repost>("see-votes") {
+                            let id = ChannelId::new(on_fail!(u64::from_str(data.as_str()), "Payload is not an id")?);
+
+                            let mut config = self.repost_config.write().await;
+                            if let Some(vote_config) = config.votes.get_mut(&id) {
+                                let mut y_str = String::new();
+                                let mut n_str = String::new();
+
+                                for y in &vote_config.yes {
+                                    y_str += format!("{}\n", y.1.full()).as_str();
+                                }
+                                for n in &vote_config.no {
+                                    n_str += format!("{}\n", n.1.full()).as_str();
+                                }
+
+                                on_fail!(component.create_response(&ctx.http,
+                                                         CreateInteractionResponse::Message(
+                                                             CreateInteractionResponseMessage::new()
+                                                                 .ephemeral(true)
+                                                                 .embed(CreateEmbed::new()
+                                                                     .title("Votes actuels")
+                                                                     .description(format!("Nombre de votes : {}", vote_config.yes.len() + vote_config.no.len()))
+                                                                     .field("Pour ✅", y_str, true)
+                                                                     .field("Contre ❌", n_str, true)))).await, "Failed to send interaction response")?;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn thread_create(&self, ctx: Context, thread: GuildChannel) -> Result<(), BidibipError> {
+        if thread.kind == ChannelType::PublicThread {
+            if let Some(parent) = thread.parent_id {
+                sleep(Duration::from_secs(1)).await;
+
+                let mut config = self.repost_config.write().await;
+                if config.votes.contains_key(&thread.id) {
+                    return Ok(());
+                }
+
+                let repost_config = assert_some!(config.forums.get(&parent), "Failed to get repost config")?.clone();
+                let messages = on_fail!(thread.messages(&ctx.http, GetMessages::new().limit(1)).await,"Failed to get first messages in thread")?;
+                let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
+                let thread_owner = on_fail!(GuildId::from(self.config.server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
+                let forum_name = on_fail!(parent.name(&ctx.http).await, "Failed to get forum name")?;
+
+                if repost_config.vote_enabled {
+                    let vote_message = on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content("Vote en réagissant au post !")).await, "Failed to send vote message")?;
+                    config.votes.insert(thread.id, VoteConfig {
+                        thread_name: thread.name.clone(),
+                        source_message_url: initial_message.link(),
+                        source_thread: thread.id,
+                        reposted_message: HashSet::new(),
+                        vote_message: vote_message.into(),
+                        yes: Default::default(),
+                        no: Default::default(),
+                    });
+                }
+
+                for repost_channel in repost_config.repost_channel {
+                    let mut last_repost_message = None;
+                    for message in make_repost_message(&initial_message, &thread, &forum_name, &thread_owner) {
+                        last_repost_message = Some(on_fail!(repost_channel.send_message(&ctx.http, message).await, format!("Failed to repost message in {}", repost_channel.mention()))?);
+                    }
+
+                    if repost_config.vote_enabled {
+                        let last_repost_message = assert_some!(last_repost_message, "Failed to get last repost message")?;
+                        assert_some!(config.votes.get_mut(&thread.id), "Failed to register last reposted message")?.reposted_message.insert(last_repost_message.into());
+                    }
+                }
+
+                if repost_config.vote_enabled {
+                    on_fail!(self.save_config(&config).await, "Failed to save config")?;
+                    on_fail!(self.update_vote_messages(&ctx, thread, &config).await,"Failed to update vote messages")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn thread_delete(&self, _: Context, channel: PartialGuildChannel, _: Option<GuildChannel>) -> Result<(), BidibipError> {
+        // On delete thread
+        if self.repost_config.read().await.votes.contains_key(&channel.id) {
+            let mut config = self.repost_config.write().await;
+            config.votes.remove(&channel.id);
+            if let Err(err) = self.save_config(&config).await {
+                error!("{}", err);
+            }
+        }
+        Ok(())
     }
 }
 

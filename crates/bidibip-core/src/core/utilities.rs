@@ -29,6 +29,7 @@ impl Username {
         format!("{} `{} | {}`", self.id.mention().to_string(), self.server_name, self.handle)
     }
 
+    #[allow(unused)]
     pub fn id(&self) -> UserId {
         self.id
     }
@@ -123,4 +124,44 @@ impl<T, E: std::fmt::Debug> ResultDebug<T, E> for Result<T, E> {
             true
         }
     }
+}
+
+
+
+#[macro_export]
+macro_rules! on_fail {
+    ($a:expr , $msg:expr) => {{
+        $a.map_err(|err| {
+            tracing::error!("{} : {}", $msg, err);
+            err
+        })
+    }};
+}
+
+#[macro_export]
+macro_rules! assert_condition {
+    ($a:expr , $msg:expr) => {{
+        if $a {
+            Ok(())
+            }
+        else {
+            tracing::error!("{}", $msg);
+            Err(Error::msg($msg))
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! assert_some {
+    ($a:expr , $msg:expr) => {{
+        match $a {
+            Some(a) => {
+                Ok(a)
+            }
+            None => {
+                tracing::error!("{}", $msg);
+                Err(Error::msg($msg))
+            }
+        }
+    }};
 }

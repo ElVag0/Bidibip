@@ -1,12 +1,13 @@
 use std::ops::Deref;
 use std::sync::Arc;
 use anyhow::Error;
-use serenity::all::{CommandInteraction, CommandType, Context, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler};
-use tracing::log::error;
+use serenity::all::{CommandInteraction, CommandType, Context, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage};
 use crate::core::create_command_detailed::CreateCommandDetailed;
+use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::core::utilities::CommandHelper;
+use crate::on_fail;
 
 pub struct Utilities {
     shared_data: Arc<BidibipSharedData>,
@@ -26,11 +27,9 @@ impl LoadModule<Utilities> for Utilities {
     }
 }
 
-impl EventHandler for Utilities {}
-
 #[serenity::async_trait]
 impl BidibipModule for Utilities {
-    async fn execute_command(&self, ctx: Context, cmd: &str, command: CommandInteraction) {
+    async fn execute_command(&self, ctx: Context, cmd: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         if cmd == "modules" {
             let modules = self.shared_data.modules.read().await;
 
@@ -40,17 +39,16 @@ impl BidibipModule for Utilities {
             }
 
 
-            if let Err(err) = command.create_response(&ctx.http, CreateInteractionResponse::Message(
+            on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .content(format!("{} modules disponibles", modules.len()))
                     .ephemeral(true)
                     .components(actions)
-            )).await {
-                error!("Failed to create response : {}", err)
-            }
+            )).await, "Failed to create response")?;
 
             command.skip(&ctx.http).await;
         }
+        Ok(())
     }
 
     fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
@@ -64,27 +62,5 @@ impl BidibipModule for Utilities {
                  .kind(CommandType::ChatInput)
                  .default_member_permissions(config.at_least_admin())*/
         ]
-    }
-}
-
-#[macro_export]
-macro_rules! on_fail {
-    ($a:expr , $msg:expr) => {{
-        a.map_err(|err| {
-            Err(err)
-        })
-    }};
-}
-
-pub trait ResultUtility {
-    fn error<T, E>(self, msg: &str) -> Result<T, E>;
-}
-
-impl<T, E> ResultUtility for Result<T, E> {
-    fn error<T, E>(self, msg: &str) -> Result<T, E> {
-        self.map_err(|err| {
-            error!("{} : {}", msg, err);
-            Err(err)
-        })
     }
 }

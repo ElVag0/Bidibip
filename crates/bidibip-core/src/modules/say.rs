@@ -2,11 +2,12 @@ use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
-use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommandOption, EventHandler, ResolvedValue};
-use tracing::error;
+use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommandOption, ResolvedValue};
+use crate::core::error::BidibipError;
 use crate::core::json_to_message::json_to_message;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{CommandHelper, OptionHelper, ResultDebug};
+use crate::on_fail;
 
 #[derive(Serialize, Deserialize)]
 pub struct Say {}
@@ -27,7 +28,7 @@ impl LoadModule<Say> for Say {
 
 #[serenity::async_trait]
 impl BidibipModule for Say {
-    async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) {
+    async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         if name == "say" {
             if let Some(option) = command.data.options().find("message") {
                 if let ResolvedValue::String(str) = option {
@@ -36,20 +37,12 @@ impl BidibipModule for Say {
                 }
             } else if let Some(option) = command.data.options().find("fichier") {
                 if let ResolvedValue::Attachment(attachment) = option {
-                    if let Err(err) = command.defer(&ctx.http).await {
-                        return error!("Failed to defer say command {}", err);
-                    }
-                    let message = String::from_utf8(match attachment.download().await {
-                        Ok(download) => { download }
-                        Err(err) => { return error!("Failed to download attachment : {}", err) }
-                    }).expect("Our bytes should be valid utf8");
-                    match json_to_message(message) {
-                        Ok(message) => {
-                            for message in message {
-                                command.channel_id.send_message(&ctx.http, message).await.on_fail("Failed to send message in channel");
-                            }
-                        }
-                        Err(err) => { error!("Invalid json_to_message : {}", err) }
+                    on_fail!(command.defer(&ctx.http).await, "Failed to defer say command")?;
+
+                    let message = on_fail!(String::from_utf8(on_fail!(attachment.download().await, "Failed to download attachment")?), "Our bytes should be valid utf8")?;
+                    let message = on_fail!(json_to_message(message), "Invalid json_to_message")?;
+                    for message in message {
+                        command.channel_id.send_message(&ctx.http, message).await.on_fail("Failed to send message in channel");
                     }
                     command.delete_response(&ctx.http).await.on_fail("Failed to delete command interaction");
                 }
@@ -57,6 +50,7 @@ impl BidibipModule for Say {
                 command.respond_user_error(&ctx.http, "Tu n'as pas précisé ce que je dois annoncer !").await;
             }
         }
+        Ok(())
     }
 
     fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
@@ -68,4 +62,3 @@ impl BidibipModule for Say {
             .add_option(CreateCommandOption::new(CommandOptionType::Attachment, "fichier", "Fichier json pour afficher un message formaté"))]
     }
 }
-impl EventHandler for Say {}

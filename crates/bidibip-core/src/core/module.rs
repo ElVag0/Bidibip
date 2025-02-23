@@ -161,86 +161,86 @@ impl GlobalInterface {
 
 #[serenity::async_trait]
 impl EventHandler for GlobalInterface {
+    async fn channel_create(&self, ctx: Context, channel: GuildChannel) {
+        for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
+            module.module.channel_create(ctx.clone(), channel.clone()).await;
+        }
+    }
+
+    async fn channel_delete(&self, ctx: Context, channel: GuildChannel, messages: Option<Vec<Message>>) {
+        for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
+            module.module.channel_delete(ctx.clone(), channel.clone(), messages.clone()).await;
+        }
+    }
+
     async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, guild_id: GuildId) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.guild_audit_log_entry_create(ctx.clone(), entry.clone(), guild_id).await;
         }
     }
 
     async fn guild_ban_addition(&self, ctx: Context, guild_id: GuildId, banned_user: User) {
         for module in self.shared_data.modules.read().await.deref() {
-            module.module.guild_ban_addition(ctx.clone(), guild_id, banned_user.clone()).await
+            #[allow(unused)]
+            module.module.guild_ban_addition(ctx.clone(), guild_id, banned_user.clone()).await;
         }
     }
 
     async fn guild_ban_removal(&self, ctx: Context, guild_id: GuildId, unbanned_user: User) {
         for module in self.shared_data.modules.read().await.deref() {
-            module.module.guild_ban_removal(ctx.clone(), guild_id, unbanned_user.clone()).await
+            #[allow(unused)]
+            module.module.guild_ban_removal(ctx.clone(), guild_id, unbanned_user.clone()).await;
         }
     }
 
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
         for module in self.shared_data.modules.read().await.deref() {
-            module.module.guild_member_addition(ctx.clone(), new_member.clone()).await
-        }
-    }
-
-    async fn thread_create(&self, ctx: Context, thread: GuildChannel) {
-        for module in self.shared_data.modules.read().await.deref() {
-            module.module.thread_create(ctx.clone(), thread.clone()).await
-        }
-    }
-
-    async fn thread_delete(&self, ctx: Context, thread: PartialGuildChannel, full_thread_data: Option<GuildChannel>) {
-        for module in self.shared_data.modules.read().await.deref() {
-            module.module.thread_delete(ctx.clone(), thread.clone(), full_thread_data.clone()).await
-        }
-    }
-
-    async fn channel_create(&self, ctx: Context, channel: GuildChannel) {
-        for module in self.shared_data.modules.read().await.deref() {
-            module.module.channel_create(ctx.clone(), channel.clone()).await
-        }
-    }
-
-    async fn channel_delete(&self, ctx: Context, channel: GuildChannel, messages: Option<Vec<Message>>) {
-        for module in self.shared_data.modules.read().await.deref() {
-            module.module.channel_delete(ctx.clone(), channel.clone(), messages.clone()).await
+            #[allow(unused)]
+            module.module.guild_member_addition(ctx.clone(), new_member.clone()).await;
         }
     }
 
     async fn guild_member_removal(&self, ctx: Context, guild_id: GuildId, user: User, member_data_if_available: Option<Member>) {
         for module in self.shared_data.modules.read().await.deref() {
-            module.module.guild_member_removal(ctx.clone(), guild_id, user.clone(), member_data_if_available.clone()).await
+            #[allow(unused)]
+            module.module.guild_member_removal(ctx.clone(), guild_id, user.clone(), member_data_if_available.clone()).await;
         }
     }
 
     async fn guild_member_update(&self, ctx: Context, old_if_available: Option<Member>, new: Option<Member>, event: GuildMemberUpdateEvent) {
         for module in self.shared_data.modules.read().await.deref() {
-            module.module.guild_member_update(ctx.clone(), old_if_available.clone(), new.clone(), event.clone()).await
+            #[allow(unused)]
+            module.module.guild_member_update(ctx.clone(), old_if_available.clone(), new.clone(), event.clone()).await;
         }
     }
 
     async fn message(&self, ctx: Context, new_message: Message) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.message(ctx.clone(), new_message.clone()).await;
         }
     }
 
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.message_delete(ctx.clone(), channel_id, deleted_message_id, guild_id).await;
         }
     }
 
     async fn message_delete_bulk(&self, ctx: Context, channel_id: ChannelId, multiple_deleted_messages_ids: Vec<MessageId>, guild_id: Option<GuildId>) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.message_delete_bulk(ctx.clone(), channel_id, multiple_deleted_messages_ids.clone(), guild_id).await;
         }
     }
 
     async fn message_update(&self, ctx: Context, old_if_available: Option<Message>, new: Option<Message>, event: MessageUpdateEvent) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.message_update(ctx.clone(), old_if_available.clone(), new.clone(), event.clone()).await;
         }
     }
@@ -263,6 +263,7 @@ impl EventHandler for GlobalInterface {
         }
 
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.ready(ctx.clone(), ready.clone()).await;
             info!("Initialized module {}", module.name);
         }
@@ -272,15 +273,31 @@ impl EventHandler for GlobalInterface {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
             module.module.interaction_create(ctx.clone(), interaction.clone()).await;
         }
 
         if let Interaction::Command(command) = interaction {
             for module in self.shared_data.modules.read().await.deref() {
                 if module.command_names.contains(&command.data.name) {
+                    #[allow(unused)]
                     module.module.execute_command(ctx.clone(), command.data.name.as_str(), command.clone()).await;
                 }
             }
+        }
+    }
+
+    async fn thread_create(&self, ctx: Context, thread: GuildChannel) {
+        for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
+            module.module.thread_create(ctx.clone(), thread.clone()).await;
+        }
+    }
+
+    async fn thread_delete(&self, ctx: Context, thread: PartialGuildChannel, full_thread_data: Option<GuildChannel>) {
+        for module in self.shared_data.modules.read().await.deref() {
+            #[allow(unused)]
+            module.module.thread_delete(ctx.clone(), thread.clone(), full_thread_data.clone()).await;
         }
     }
 }

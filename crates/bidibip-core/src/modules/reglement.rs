@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, ComponentInteractionDataKind, Context, EventHandler, GetMessages, GuildId, Interaction, Message};
-use tracing::error;
+use serenity::all::{ChannelId, ComponentInteractionDataKind, Context, GetMessages, GuildId, Interaction, Message};
 use crate::core::config::Config;
+use crate::core::error::BidibipError;
 use crate::core::json_to_message::json_to_message;
 use crate::core::module::BidibipSharedData;
 use crate::core::utilities::{ResultDebug};
 use crate::modules::{BidibipModule, LoadModule};
+use crate::on_fail;
 
 pub struct Reglement {
     config: Arc<Config>,
@@ -20,57 +21,35 @@ struct ReglementConfig {
 }
 
 #[serenity::async_trait]
-impl EventHandler for Reglement {
-    async fn message(&self, ctx: Context, new_message: Message) {
+impl BidibipModule for Reglement {
+    async fn message(&self, ctx: Context, new_message: Message)   -> Result<(), BidibipError> {
         if new_message.channel_id == self.reglement_config.reglement_channel {
             if let Some(file) = new_message.attachments.first() {
-                let data = match file.download().await {
-                    Ok(data) => {
-                        match String::from_utf8(data) {
-                            Ok(data) => { data }
-                            Err(err) => { return error!("Sent json is not a valid utf8 file : {}", err) }
-                        }
-                    }
-                    Err(err) => { return error!("Failed to download reglement json : {}", err) }
-                };
+                let data = on_fail!(String::from_utf8(on_fail!(file.download().await, "Failed to download reglement json")?), "Sent json is not a valid utf8 file")?;
 
-                let messages = match json_to_message(data) {
-                    Ok(message) => { message }
-                    Err(err) => { return error!("Failed to convert json to message : {}", err) }
-                };
-                let old_messages = match new_message.channel_id.messages(&ctx.http, GetMessages::new().limit(100)).await {
-                    Ok(old_messages) => { old_messages }
-                    Err(err) => { return error!("Failed to get old messages : {}", err) }
-                };
+                let messages = on_fail!(json_to_message(data), "Failed to convert json to message")?;
+                let old_messages = on_fail!(new_message.channel_id.messages(&ctx.http, GetMessages::new().limit(100)).await, "Failed to get old messages")?;
                 for message in old_messages {
-                    if let Err(err) = message.delete(&ctx.http).await {
-                        return error!("Failed to delete old message : {}", err);
-                    }
+                    on_fail!(message.delete(&ctx.http).await, "Failed to delete old message")?;
                 }
                 for message in messages {
-                    if let Err(err) = new_message.channel_id.send_message(&ctx.http, message).await {
-                        return error!("Failed to send new reglement message : {}", err);
-                    }
+                    on_fail!(new_message.channel_id.send_message(&ctx.http, message).await, "Failed to send new reglement message")?;
                 }
             }
         }
+        Ok(())
     }
 
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction)   -> Result<(), BidibipError> {
         match interaction {
             Interaction::Component(component) => {
                 if component.data.custom_id != "reglement_approval" {
-                    return;
+                    return Ok(());
                 }
                 match component.data.kind {
                     ComponentInteractionDataKind::Button => {
-                        let member = match GuildId::from(self.config.server_id).member(&ctx.http, component.user.id).await {
-                            Ok(member) => {member}
-                            Err(err) => { return error!("Failed to get member data : {}", err) }
-                        };
-                        if let Err(err) = member.add_role(&ctx.http, self.config.roles.member).await {
-                            error!("Failed to give member role : {}", err)
-                        }
+                        let member = on_fail!(GuildId::from(self.config.server_id).member(&ctx.http, component.user.id).await, "Failed to get member data")?;
+                        on_fail!(member.add_role(&ctx.http, self.config.roles.member).await, "Failed to give member role")?;
                         component.defer(&ctx.http).await.on_fail("Failed to defer command interaction");
                     }
                     _ => {}
@@ -78,10 +57,9 @@ impl EventHandler for Reglement {
             }
             _ => {}
         }
+        Ok(())
     }
 }
-
-impl BidibipModule for Reglement {}
 
 impl LoadModule<Reglement> for Reglement {
     fn name() -> &'static str {

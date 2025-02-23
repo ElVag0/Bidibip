@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use anyhow::Error;
-use serenity::all::{ComponentInteractionDataKind, Context, EventHandler, GuildId, Interaction, Member, Mentionable, ResolvedValue, User};
+use serenity::all::{ComponentInteractionDataKind, Context, GuildId, Interaction, Member, Mentionable, ResolvedValue, User};
 use tracing::{info};
+use crate::core::error::BidibipError;
 use crate::core::module::BidibipSharedData;
 use crate::core::utilities::Username;
 use crate::modules::{BidibipModule, LoadModule};
@@ -18,21 +19,23 @@ impl LoadModule<Log> for Log {
     }
 
     async fn load(_: &Arc<BidibipSharedData>) -> Result<Log, Error> {
-        Ok(Log{})
+        Ok(Log {})
     }
 }
 
 #[serenity::async_trait]
-impl EventHandler for Log {
-    async fn guild_member_addition(&self, _: Context, new_member: Member) {
+impl BidibipModule for Log {
+    async fn guild_member_addition(&self, _: Context, new_member: Member) -> Result<(), BidibipError> {
         info!("{} a rejoint le serveur", Username::from_user(&new_member.user).full());
+        Ok(())
     }
 
-    async fn guild_member_removal(&self, _: Context, _: GuildId, user: User, _: Option<Member>) {
+    async fn guild_member_removal(&self, _: Context, _: GuildId, user: User, _: Option<Member>)  -> Result<(), BidibipError> {
         info!("{} a quitté le serveur", Username::from_user(&user).full());
+        Ok(())
     }
 
-    async fn interaction_create(&self, _ctx: Context, interaction: Interaction) {
+    async fn interaction_create(&self, _ctx: Context, interaction: Interaction) -> Result<(), BidibipError> {
         match interaction {
             Interaction::Command(command_interaction) => {
                 let mut options = String::new();
@@ -59,10 +62,8 @@ impl EventHandler for Log {
             Interaction::Modal(modal_interaction) => {
                 info!("User {} sent modal #{}", Username::from_user(&modal_interaction.user).safe_full(), modal_interaction.data.custom_id);
             }
-            _ => { }
+            _ => {}
         }
+        Ok(())
     }
-}
-
-impl BidibipModule for Log {
 }

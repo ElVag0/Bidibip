@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use anyhow::Error;
-use serenity::all::{ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent};
+use serenity::all::{ChannelId, Colour, Context, CreateMessage, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent};
 use serenity::all::audit_log::Action;
 use serenity::builder::CreateEmbed;
-use tracing::{error, info};
+use tracing::{info};
 use crate::core::config::Config;
+use crate::core::error::BidibipError;
 use crate::core::module::BidibipSharedData;
 use crate::core::utilities::{ResultDebug, Username};
 use crate::modules::{BidibipModule, LoadModule};
+use crate::on_fail;
 
 pub struct History {
     config: Arc<Config>,
@@ -27,11 +29,9 @@ impl LoadModule<History> for History {
     }
 }
 
-impl BidibipModule for History {}
-
 #[serenity::async_trait]
-impl EventHandler for History {
-    async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) {
+impl BidibipModule for History {
+    async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) -> Result<(), BidibipError> {
         let date = deleted_message_id.created_at().format("%d %B %Y");
         let mut old_message_content = format!("Ancien message : {}", deleted_message_id.link(channel_id, guild_id));
         let mut user = None;
@@ -39,7 +39,7 @@ impl EventHandler for History {
 
             // Skip self
             if deleted.author.id.get() == self.config.application_id.get() {
-                return;
+                return Ok(());
             }
 
             if !deleted.content.is_empty() {
@@ -57,21 +57,11 @@ impl EventHandler for History {
         if user.is_some() {
             let mut by = None;
             if let Some(guild) = guild_id {
-                match guild.audit_logs(&ctx.http, Some(Action::Message(MessageAction::Delete)), None, None, Some(1)).await {
-                    Ok(res) => {
-                        if let Some(entry) = res.entries.first() {
-                            match entry.user_id.to_user(&ctx.http).await {
-                                Ok(found_user) => {
-                                    by = Some(found_user);
-                                }
-                                Err(err) => { error!("Failed to get deleted message user : {}", err) }
-                            }
-                        }
-                    }
-                    Err(error) => { error!("Failed to fetch audit logs {}", error) }
+                let logs = on_fail!(guild.audit_logs(&ctx.http, Some(Action::Message(MessageAction::Delete)), None, None, Some(1)).await, "Failed to fetch audit logs")?;
+                if let Some(entry) = logs.entries.first() {
+                    by = Some(on_fail!(entry.user_id.to_user(&ctx.http).await, "Failed to get deleted message user")?)
                 }
             }
-
 
             let user_name = match &user {
                 None => { "Unknown user".to_string() }
@@ -107,9 +97,10 @@ impl EventHandler for History {
 
             info!(target: "log","Ancien message du {} supprimé : {}", date, deleted_message_id.link(channel_id, guild_id));
         }
+        Ok(())
     }
 
-    async fn message_update(&self, ctx: Context, old_if_available: Option<Message>, new: Option<Message>, event: MessageUpdateEvent) {
+    async fn message_update(&self, ctx: Context, old_if_available: Option<Message>, new: Option<Message>, event: MessageUpdateEvent) -> Result<(), BidibipError> {
         let mut user = event.author;
         let mut new_url = event.id.link(event.channel_id, event.guild_id);
         let mut old_text = String::new();
@@ -131,7 +122,7 @@ impl EventHandler for History {
 
             // Skip self
             if new.author.id.get() == self.config.application_id.get() {
-                return;
+                return Ok(());
             }
 
             if user.is_none() {
@@ -190,5 +181,6 @@ impl EventHandler for History {
                         Username::from_user(&user).full()
                     }
                 }, old_text, new_text);
+        Ok(())
     }
 }
