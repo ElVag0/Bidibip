@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serenity::all::{ChannelId, Http, Mentionable, RoleId};
+use serenity::all::{ChannelId, Http, Mentionable};
 use std::fmt::{Debug};
 use std::fs;
 use std::fs::OpenOptions;
@@ -70,7 +70,7 @@ where
                             channel.say(&http, format!(":yellow_circle: `{target}{line}` {}", &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send warning log");
                         }
                         Level::ERROR => {
-                            channel.say(&http, format!(":red_circle: `{target}{line}` {} {}", RoleId::from(support_role).mention(), &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send error log");
+                            channel.say(&http, format!(":red_circle: `{target}{line}` {} {}", support_role.mention(), &visitor.0[0..std::cmp::min(900, visitor.0.len())])).await.expect("Failed to send error log");
                         }
                         _ => {}
                     }

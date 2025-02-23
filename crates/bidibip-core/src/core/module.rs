@@ -1,7 +1,7 @@
 use std::collections::{HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
-use serenity::all::{AuditLogEntry, ChannelId, Command, Context, GuildChannel, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, PartialGuildChannel, Ready, RoleId, User};
+use serenity::all::{AuditLogEntry, ChannelId, Command, Context, GuildChannel, GuildId, GuildMemberUpdateEvent, Interaction, Member, Message, MessageId, MessageUpdateEvent, PartialGuildChannel, Ready, User};
 use serenity::model::Permissions;
 use serenity::prelude::EventHandler;
 use tokio::sync::RwLock;
@@ -19,6 +19,7 @@ pub struct ModuleData {
     pub module: Box<dyn BidibipModule>,
     pub command_names: HashSet<String>,
     pub name: String,
+    #[allow(unused)]
     pub description: String,
 }
 
@@ -64,21 +65,21 @@ impl GlobalInterface {
             }
         };
 
-        let member_role = match roles.get(&RoleId::from(self.shared_data.config.roles.member)) {
+        let member_role = match roles.get(&self.shared_data.config.roles.member) {
             None => {
                 return error!("Member role with id {} does not exists", self.shared_data.config.roles.member);
             }
             Some(role) => { role }
         };
 
-        let admin_role = match roles.get(&RoleId::from(self.shared_data.config.roles.administrator)) {
+        let admin_role = match roles.get(&self.shared_data.config.roles.administrator) {
             None => {
                 return error!("Administrator role with id {} does not exists", self.shared_data.config.roles.administrator);
             }
             Some(role) => { role }
         };
 
-        let helper_role = match roles.get(&RoleId::from(self.shared_data.config.roles.helper)) {
+        let helper_role = match roles.get(&self.shared_data.config.roles.helper) {
             None => {
                 return error!("Helper role with id {} does not exists", self.shared_data.config.roles.helper);
             }
@@ -122,7 +123,7 @@ impl GlobalInterface {
             }
         }
 
-        let guild_id = GuildId::new(self.shared_data.config.server_id);
+        let guild_id = self.shared_data.config.server_id;
 
         let glob = Command::get_global_commands(&ctx.http).await.unwrap();
         if !glob.is_empty() {
@@ -245,7 +246,7 @@ impl EventHandler for GlobalInterface {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        self.log_connector.init_for_channel(ChannelId::new(self.shared_data.config.channels.log_channel), ctx.http.clone());
+        self.log_connector.init_for_channel(self.shared_data.config.channels.log_channel, ctx.http.clone());
 
         self.fetch_roles(&ctx).await;
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ComponentInteractionDataKind, Context, EventHandler, GetMessages, GuildId, Interaction, Message};
+use serenity::all::{ChannelId, ComponentInteractionDataKind, Context, EventHandler, GetMessages, GuildId, Interaction, Message};
 use tracing::error;
 use crate::core::config::Config;
 use crate::core::json_to_message::json_to_message;
@@ -16,7 +16,7 @@ pub struct Reglement {
 
 #[derive(Serialize, Deserialize, Default)]
 struct ReglementConfig {
-    reglement_channel: u64,
+    reglement_channel: ChannelId,
 }
 
 #[serenity::async_trait]

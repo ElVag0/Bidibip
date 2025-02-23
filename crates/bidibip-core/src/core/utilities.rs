@@ -1,14 +1,14 @@
 use std::fmt::Display;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ CommandInteraction, ComponentInteraction, CreateInteractionResponse, CreateInteractionResponseMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
+use serenity::all::{CommandInteraction, ComponentInteraction, CreateInteractionResponse, CreateInteractionResponseMessage, Http, Mentionable, ModalInteraction, ResolvedOption, ResolvedValue, User, UserId};
 use tracing::error;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Username {
     handle: String,
     server_name: String,
-    id: u64,
+    id: UserId,
 }
 
 impl Username {
@@ -21,15 +21,15 @@ impl Username {
         Self {
             handle: handle.clone(),
             server_name: if let Some(global) = &user.global_name { global.clone() } else { handle },
-            id: user.id.get(),
+            id: user.id,
         }
     }
 
     pub fn full(&self) -> String {
-        format!("{} `{} | {}`", UserId::from(self.id).mention().to_string(), self.server_name, self.handle)
+        format!("{} `{} | {}`", self.id.mention().to_string(), self.server_name, self.handle)
     }
 
-    pub fn id(&self) -> u64 {
+    pub fn id(&self) -> UserId {
         self.id
     }
 
@@ -62,7 +62,7 @@ pub trait TruncateText {
 }
 
 impl<T: Display> TruncateText for T {
-    fn truncate_text(&self, max: usize) -> String  {
+    fn truncate_text(&self, max: usize) -> String {
         let string = format!("{self}");
         if string.len() > max {
             format!("{}..", string[0..max - 2].to_string())

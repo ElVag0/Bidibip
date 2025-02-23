@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use anyhow::Error;
-use serenity::all::{ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent, UserId};
+use serenity::all::{ChannelId, Colour, Context, CreateMessage, EventHandler, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent};
 use serenity::all::audit_log::Action;
 use serenity::builder::CreateEmbed;
 use tracing::{error, info};
@@ -38,7 +38,7 @@ impl EventHandler for History {
         if let Some(deleted) = ctx.cache.message(channel_id, deleted_message_id) {
 
             // Skip self
-            if deleted.author.id.get() == self.config.application_id {
+            if deleted.author.id.get() == self.config.application_id.get() {
                 return;
             }
 
@@ -60,7 +60,7 @@ impl EventHandler for History {
                 match guild.audit_logs(&ctx.http, Some(Action::Message(MessageAction::Delete)), None, None, Some(1)).await {
                     Ok(res) => {
                         if let Some(entry) = res.entries.first() {
-                            match UserId::from(entry.user_id.get()).to_user(&ctx.http).await {
+                            match entry.user_id.to_user(&ctx.http).await {
                                 Ok(found_user) => {
                                     by = Some(found_user);
                                 }
@@ -86,7 +86,7 @@ impl EventHandler for History {
                     format!("{} ({})", Username::from_user(user).safe_full(), user.id)
                 }
             };
-            ChannelId::from(self.config.channels.log_channel).send_message(
+            self.config.channels.log_channel.send_message(
                 &ctx.http,
                 CreateMessage::new().embed(
                     CreateEmbed::new()
@@ -97,7 +97,7 @@ impl EventHandler for History {
 
             info!(target: "log","Message {} de {} du {} supprimé par {} : {}", deleted_message_id.link(channel_id, guild_id), user_name, date, from_name, old_message_content);
         } else {
-            ChannelId::from(self.config.channels.log_channel).send_message(
+            self.config.channels.log_channel.send_message(
                 &ctx.http,
                 CreateMessage::new().embed(
                     CreateEmbed::new()
@@ -130,7 +130,7 @@ impl EventHandler for History {
         if let Some(new) = new {
 
             // Skip self
-            if new.author.id.get() == self.config.application_id {
+            if new.author.id.get() == self.config.application_id.get() {
                 return;
             }
 
@@ -178,7 +178,7 @@ impl EventHandler for History {
             embed = embed.field("nouveau", &new_text, false);
         }
 
-        ChannelId::from(self.config.channels.log_channel).send_message(
+        self.config.channels.log_channel.send_message(
             &ctx.http,
             CreateMessage::new().embed(embed)).await.on_fail("Failed to print message rename log");
 

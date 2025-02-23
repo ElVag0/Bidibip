@@ -13,9 +13,9 @@ pub struct Welcome {
 
 #[derive(Serialize, Deserialize, Default)]
 struct WelcomeConfig {
-    join_channel: u64,
-    leave_channel: u64,
-    reglement_channel: u64,
+    join_channel: ChannelId,
+    leave_channel: ChannelId,
+    reglement_channel: ChannelId,
     welcome_messages: Vec<String>,
     leave_messages: Vec<String>
 }
@@ -43,8 +43,8 @@ impl EventHandler for Welcome {
             Some(sentence) => {sentence.clone()}
         };
         sentence += "\n> N'oublies pas de lire le {reglement} pour accéder au serveur.";
-        let sentence = sentence.replace("{user}", new_member.user.mention().to_string().as_str()).replace("{reglement}", ChannelId::from(self.welcome_config.reglement_channel).mention().to_string().as_str());
-        if let Err(err) = ChannelId::from(self.welcome_config.join_channel).send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
+        let sentence = sentence.replace("{user}", new_member.user.mention().to_string().as_str()).replace("{reglement}", self.welcome_config.reglement_channel.mention().to_string().as_str());
+        if let Err(err) = self.welcome_config.join_channel.send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
             error!("Failed to send welcome message : {}", err);
         }
     }
@@ -55,7 +55,7 @@ impl EventHandler for Welcome {
             Some(sentence) => {sentence.clone()}
         };
         let sentence = sentence.replace("{user}", user.mention().to_string().as_str());
-        if let Err(err) = ChannelId::from(self.welcome_config.leave_channel).send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
+        if let Err(err) = self.welcome_config.leave_channel.send_message(&ctx.http, CreateMessage::new().content(sentence)).await {
             error!("Failed to send leave message : {}", err);
         }
     }

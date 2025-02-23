@@ -63,6 +63,28 @@ impl BidibipModule for Utilities {
                  .description("Panneau de configuration")
                  .kind(CommandType::ChatInput)
                  .default_member_permissions(config.at_least_admin())*/
-                 ]
+        ]
+    }
+}
+
+#[macro_export]
+macro_rules! on_fail {
+    ($a:expr , $msg:expr) => {{
+        a.map_err(|err| {
+            Err(err)
+        })
+    }};
+}
+
+pub trait ResultUtility {
+    fn error<T, E>(self, msg: &str) -> Result<T, E>;
+}
+
+impl<T, E> ResultUtility for Result<T, E> {
+    fn error<T, E>(self, msg: &str) -> Result<T, E> {
+        self.map_err(|err| {
+            error!("{} : {}", msg, err);
+            Err(err)
+        })
     }
 }

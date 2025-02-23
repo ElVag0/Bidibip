@@ -1,6 +1,6 @@
 ## En cours
 
-> - ⚡ repost
+> - ⚡ Advertising
 > - ⚡ Utilities
 
 ## Fait
@@ -13,10 +13,10 @@
 > - ✅ Say
 > - ✅ Warns
 > - ✅ Welcome
+> - ✅ repost
 
 ## Pas fait (urgent)
 
-> - ❌ Advertising
 > - ❌ anti-spam
 >
 > 

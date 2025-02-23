@@ -4,28 +4,29 @@ use anyhow::Error;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use serenity::all::{ApplicationId, ChannelId, GuildId, RoleId};
 use tracing::warn;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Roles {
-    pub support: u64,
-    pub member: u64,
-    pub helper: u64,
-    pub administrator: u64,
-    pub mute: u64,
+    pub support: RoleId,
+    pub member: RoleId,
+    pub helper: RoleId,
+    pub administrator: RoleId,
+    pub mute: RoleId,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Channels {
-    pub log_channel: u64, // Where everything is printed
-    pub staff_channel: u64, // The channel I should use to tell something important to the moderator team
+    pub log_channel: ChannelId, // Where everything is printed
+    pub staff_channel: ChannelId, // The channel I should use to tell something important to the moderator team
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub token: String,
-    pub server_id: u64,
-    pub application_id: u64,
+    pub server_id: GuildId,
+    pub application_id: ApplicationId,
     pub log_directory: PathBuf,
     pub module_config_directory: PathBuf,
     pub disabled_modules: Vec<String>,
@@ -38,21 +39,21 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             token: "PLEASE FILL APP TOKEN FIRST".to_string(),
-            server_id: 0,
-            application_id: 0,
+            server_id: GuildId::default(),
+            application_id: ApplicationId::default(),
             log_directory: PathBuf::from("saved/logs"),
             module_config_directory: PathBuf::from("saved/config"),
             disabled_modules: vec![],
             channels: Channels {
-                log_channel: 0,
-                staff_channel: 0,
+                log_channel: ChannelId::default(),
+                staff_channel: ChannelId::default(),
             },
             roles: Roles {
-                support: 0,
-                member: 0,
-                helper: 0,
-                administrator: 0,
-                mute: 0,
+                support: RoleId::default(),
+                member: RoleId::default(),
+                helper: RoleId::default(),
+                administrator: RoleId::default(),
+                mute: RoleId::default(),
             },
             cache_message_size: 10000,
         }

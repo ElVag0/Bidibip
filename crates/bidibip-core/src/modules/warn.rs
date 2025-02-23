@@ -73,12 +73,12 @@ impl LoadModule<Warn> for Warn {
 
 #[derive(Serialize, Deserialize, Default)]
 struct WarnConfig {
-    public_warn_channel: u64,
-    moderation_warn_channel: u64,
+    public_warn_channel: ChannelId,
+    moderation_warn_channel: ChannelId,
     #[serde(rename = "ban-vocal")]
-    ban_vocal: u64,
+    ban_vocal: RoleId,
     // Key is user id
-    warns: HashMap<u64, WarnedUserList>,
+    warns: HashMap<UserId, WarnedUserList>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -266,47 +266,46 @@ impl Warn {
             }
         }
 
-        Ok(ChannelId::new(warn_config.moderation_warn_channel)
-            .send_message(http,
-                          CreateMessage::new()
-                              .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), RoleId::from(self.config.roles.administrator).mention()))
-                              .embed(embed)
-                              .components(vec![
-                                  CreateActionRow::Buttons(vec![
-                                      CreateButton::new("warn_update_message")
-                                          .label("Historique")
-                                          .style(ButtonStyle::Secondary)
-                                  ])
-                              ])).await?)
+        Ok(warn_config.moderation_warn_channel.send_message(http,
+                                                            CreateMessage::new()
+                                                                .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), self.config.roles.administrator.mention()))
+                                                                .embed(embed)
+                                                                .components(vec![
+                                                                    CreateActionRow::Buttons(vec![
+                                                                        CreateButton::new("warn_update_message")
+                                                                            .label("Historique")
+                                                                            .style(ButtonStyle::Secondary)
+                                                                    ])
+                                                                ])).await?)
     }
 
     async fn send_warn_public_message(&self, http: &Http, warn_data: &UserWarn, action: &ActionType) -> Result<(), Error> {
         let warn_config = self.warn_config.read().await;
         match action {
             ActionType::Ban => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été banni par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été banni par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
             }
             ActionType::Kick => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été kick par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été kick par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
             }
             ActionType::Warn => {}
             ActionType::BanVocal => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été exclu du vocal par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été exclu du vocal par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
             }
             ActionType::ExcludeOneHour => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new()
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
                     .description(&warn_data.reason)
                     .field("durée", "une heure", true))).await?;
             }
             ActionType::ExcludeOneDay => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new()
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
                     .description(&warn_data.reason)
                     .field("durée", "une journée", true))).await?;
             }
             ActionType::ExcludeOneWeek => {
-                ChannelId::from(warn_config.public_warn_channel).send_message(http, CreateMessage::new().embed(CreateEmbed::new()
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
                     .description(&warn_data.reason)
                     .field("durée", "une semaine", true))).await?;
@@ -316,7 +315,7 @@ impl Warn {
     }
 
     async fn send_warn_private_message(&self, http: &Http, warn_data: &UserWarn, action: &ActionType) -> Result<(), Error> {
-        let server_name = match GuildId::new(self.config.server_id).to_partial_guild(http).await {
+        let server_name = match self.config.server_id.to_partial_guild(http).await {
             Ok(guild) => { guild.name }
             Err(err) => {
                 error!("Failed to get server data : {}", err);
@@ -371,7 +370,7 @@ impl Warn {
                 member.kick_with_reason(http, warn_data.reason.as_str()).await.on_fail("Failed to kick member");
             }
             ActionType::BanVocal => {
-                member.add_role(http, RoleId::from(self.warn_config.read().await.ban_vocal)).await?
+                member.add_role(http, self.warn_config.read().await.ban_vocal).await?
             }
             ActionType::ExcludeOneHour => {
                 member.disable_communication_until_datetime(http, Timestamp::from(Timestamp::now().add(TimeDelta::hours(1)))).await?
@@ -428,7 +427,7 @@ impl Warn {
 impl EventHandler for Warn {
     async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, _: GuildId) {
         if let Action::Member(member_action) = entry.action {
-            if entry.user_id != self.config.application_id {
+            if entry.user_id.get() != self.config.application_id.get() {
                 if let Some(target) = entry.target_id {
                     let to = match UserId::from(target.get()).to_user(&ctx.http).await {
                         Ok(user) => { user }
@@ -498,7 +497,7 @@ impl EventHandler for Warn {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
         let warns = self.warn_config.read().await;
 
-        if let Some(data) = warns.warns.get(&new_member.user.id.get()) {
+        if let Some(data) = warns.warns.get(&new_member.user.id) {
             if !data.warns.is_empty() {
                 let mut last = String::new();
                 let mut last_date = 0;
@@ -509,7 +508,7 @@ impl EventHandler for Warn {
                     }
                 }
 
-                if let Err(err) = ChannelId::new(self.config.channels.staff_channel).send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif ! {}", Username::from_user(&new_member.user).full(), data.warns.len(), last))).await {
+                if let Err(err) = self.config.channels.staff_channel.send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif ! {}", Username::from_user(&new_member.user).full(), data.warns.len(), last))).await {
                     error!("Failed to send message : {}", err)
                 }
             }
