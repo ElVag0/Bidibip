@@ -1,28 +1,18 @@
-use serde::{Deserialize, Serialize};
-use serenity::all::{Context, GuildChannel, Message};
 use crate::core::error::BidibipError;
-use crate::modules::advertising::Step;
+use crate::modules::advertising::steps::{ResetStep, SubStep};
+use serde::{Deserialize, Serialize};
+use serenity::all::{Context, GuildChannel};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct VolunteeringInfos {
-    step: Step,
 }
 
+#[serenity::async_trait]
+impl ResetStep for VolunteeringInfos {}
 
-impl VolunteeringInfos {
-    pub async fn advance(&mut self, _: &Context, _: &GuildChannel) -> Result<bool, BidibipError> {
+#[serenity::async_trait]
+impl SubStep for VolunteeringInfos {
+    async fn advance(&mut self, _: &Context, _: &GuildChannel) -> Result<bool, BidibipError> {
         Ok(true)
-    }
-
-    pub fn receive_message(&mut self, _: &Message) {
-        match self.step.value() {
-            _ => {}
-        }
-    }
-
-    pub fn clicked_button(&mut self, action: &str) {
-        match action {
-            &_ => {}
-        }
     }
 }

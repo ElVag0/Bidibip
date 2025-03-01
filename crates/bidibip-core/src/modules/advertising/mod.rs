@@ -2,11 +2,10 @@ mod ad_utils;
 mod steps;
 
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ActionRowComponent, ButtonKind, ButtonStyle, ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateThread, EditMessage, GuildChannel, Http, Interaction, Mentionable, Message, User, UserId};
+use serenity::all::{   ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateThread,  GuildChannel, Http, Interaction, Mentionable, Message, User, UserId};
 use serenity::builder::{CreateActionRow, CreateButton};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
@@ -19,9 +18,9 @@ use crate::{assert_some, on_fail};
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
 use crate::modules::advertising::steps::main::MainSteps;
+use crate::modules::advertising::steps::SubStep;
 
 pub struct Advertising {
-    config: Arc<Config>,
     ad_config: RwLock<AdvertisingConfig>,
 }
 
@@ -30,32 +29,6 @@ pub struct StoredAdData {
     thread: ChannelId,
     ad_message: MessageReference,
     description: MainSteps,
-}
-
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
-pub struct Step(String);
-
-impl Deref for Step {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_str()
-    }
-}
-
-impl Step {
-    pub fn value(&self) -> &'_ str {
-        self.0.as_str()
-    }
-
-    pub fn test_or_set(&mut self, name: &str) -> bool {
-        if name == self.0 {
-            true
-        } else {
-            self.0 = name.to_string();
-            false
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -80,7 +53,7 @@ impl Default for AdvertisingConfig {
 impl Advertising {
     async fn start_procedure(&self, ctx: &Context, thread: GuildChannel, user: &User, config: &mut MainSteps) -> Result<(), BidibipError> {
         on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content(format!("# Bienvenue dans le formulaire de création d'annonce {} !", user.name))).await, "Failed to send welcome message")?;
-        config.advance(ctx, &thread, user).await?;
+        config.advance(ctx, &thread).await?;
         Ok(())
     }
 
@@ -94,23 +67,6 @@ impl Advertising {
         } else {
             Ok(false)
         }
-    }
-
-    async fn update_buttons(&self, ctx: &Context, message: &mut Box<Message>, clicked_element: &str) -> Result<(), BidibipError> {
-        let mut component = vec![];
-        for row in &message.components {
-            let mut buttons = vec![];
-            for component in &row.components {
-                if let ActionRowComponent::Button(button) = component {
-                    if let ButtonKind::NonLink { custom_id, style: _style } = &button.data {
-                        buttons.push(CreateButton::new(custom_id.clone()).label(assert_some!(button.label.clone(), "invalid label")?).style(if custom_id.contains(clicked_element) { ButtonStyle::Success } else { ButtonStyle::Secondary }));
-                    }
-                }
-            }
-            component.push(CreateActionRow::Buttons(buttons));
-        }
-        on_fail!(message.edit(&ctx.http, EditMessage::new().components(component)).await, "Failed to update buttons")?;
-        Ok(())
     }
 }
 
@@ -138,13 +94,13 @@ impl BidibipModule for Advertising {
                         on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new().content("Tu as déjà des annonces ouvertes")).await, "failed to send existing message 1")?;
 
                         for (channel, data) in stored_add {
-                            let title = match &data.description.title {
+                            let title = match &data.description.title.value() {
                                 None => { "Annonce sans titre" }
                                 Some(title) => { title.as_str() }
                             };
 
                             on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new()
-                                .content(format!("**{}** : {}", title, data.ad_message.link(self.config.server_id)))
+                                .content(format!("**{}** : {}", title, data.ad_message.link(Config::get().server_id)))
                             .components(vec![CreateActionRow::Buttons(vec![
                                         CreateButton::new(make_custom_id::<Advertising>("edit-ad", channel)).label("Modifier"),
                                         CreateButton::new(make_custom_id::<Advertising>("delete-ad", channel)).label("Supprimer")
@@ -167,7 +123,7 @@ impl BidibipModule for Advertising {
 
                 ad_config.in_progress_ad.insert(command.user.id, (new_channel_id, in_progress_data));
 
-                on_fail!(self.config.save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "failed to save config")?;
+                on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "failed to save config")?;
             }
             _ => {}
         }
@@ -184,18 +140,22 @@ impl BidibipModule for Advertising {
             // Wrong channel
             if *edition_thread != message.channel_id { return Ok(()); }
 
-            ad_config.receive_message(&message);
+            let mut items : Vec<&mut dyn SubStep> = vec![ad_config];
+            while let Some(item) = items.pop() {
+                item.receive_message(&ctx, edition_thread, &message).await?;
+                items.append(&mut item.get_dependencies());
+            }
 
             // Move to next step
             let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-            ad_config.advance(&ctx, &guild_channel, &message.author).await?;
+            ad_config.advance(&ctx, &guild_channel).await?;
         }
 
         Ok(())
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) -> Result<(), BidibipError> {
-        if let Interaction::Component(mut component) = interaction {
+        if let Interaction::Component(component) = interaction {
             if let ComponentInteractionDataKind::Button = component.data.kind {
                 if component.data.get_custom_id_data::<Advertising>("create-ad").is_some() {
                     let mut ad_config = self.ad_config.write().await;
@@ -205,27 +165,29 @@ impl BidibipModule for Advertising {
                         }
                         let channel = assert_some!(on_fail!(component.channel_id.to_channel(&ctx.http).await, "failed to get channel")?.guild(), "Failed to get guild_channel")?;
                         self.start_procedure(&ctx, channel, &component.user, in_progress).await?;
-                        on_fail!(self.config.save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     }
                 }
                 if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>()
                 {
                     let mut ad_config = self.ad_config.write().await;
                     if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
-                        in_progress.clicked_button(action.as_str());
-
-                        // Update buttons
-                        if !action.contains("edit") { self.update_buttons(&ctx, &mut component.message, action.as_str()).await?; }
 
                         on_fail!(component.defer(&ctx.http).await, "failed to defer interaction")?;
 
+                        let mut items : Vec<&mut dyn SubStep> = vec![in_progress];
+                        while let Some(item) = items.pop() {
+                            item.clicked_button(&ctx, edition_thread, action.as_str()).await?;
+                            items.append(&mut item.get_dependencies());
+                        }
+
                         // Move to next step
                         let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-                        in_progress.advance(&ctx, &guild_channel, &component.user).await?;
+                        in_progress.advance(&ctx, &guild_channel).await?;
                     }
 
                     // Save modifications
-                    on_fail!(self.config.save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
+                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
                 }
             }
         }
@@ -243,9 +205,9 @@ impl LoadModule<Advertising> for Advertising {
         "Créer une annonce d'offre ou de recherche d'emploi"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Advertising, Error> {
-        let module = Self { config: shared_data.config.clone(), ad_config: Default::default() };
-        let warn_config = shared_data.config.load_module_config::<Advertising, AdvertisingConfig>()?;
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Advertising, Error> {
+        let module = Self { ad_config: Default::default() };
+        let warn_config = Config::get().load_module_config::<Advertising, AdvertisingConfig>()?;
         *module.ad_config.write().await = warn_config;
         Ok(module)
     }

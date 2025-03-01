@@ -1,43 +1,39 @@
-
-use serde::{Deserialize, Serialize};
-use serenity::all::{Context, GuildChannel, Message};
 use crate::core::error::BidibipError;
-use crate::modules::advertising::{Advertising, Step};
-use crate::modules::advertising::ad_utils::create_text_input_options;
+use crate::modules::advertising::ad_utils::TextOption;
+use crate::modules::advertising::steps::{ResetStep, SubStep};
+use serde::{Deserialize, Serialize};
+use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct OpenEndedInfos {
-    step: Step,
-    pub compensation: Option<String>,
+    pub compensation: TextOption,
 }
 
+#[serenity::async_trait]
+impl ResetStep for OpenEndedInfos {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        self.compensation.delete(http, thread).await?;
+        Ok(())
+    }
+}
 
-impl OpenEndedInfos {
-    pub async fn advance(&mut self, ctx: &Context, thread:& GuildChannel) -> Result<bool, BidibipError> {
-        if self.compensation.is_none() {
-            if self.step.test_or_set("COMPENSATION") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Rémunération", Some("compensation")).await?;
+#[serenity::async_trait]
+impl SubStep for OpenEndedInfos {
+    async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
+        if self.compensation.is_unset() {
+            self.compensation.try_init(&ctx.http, thread, "Rémunération").await?;
             return Ok(false);
         }
-        self.step.test_or_set("finished");
         Ok(true)
     }
 
-    pub fn receive_message(&mut self, message: &Message) {
-        match self.step.value() {
-            "COMPENSATION" => {
-                self.compensation = Some(message.content.clone())
-            }
-            _ => {}
-        }
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
+        self.compensation.try_set(&ctx.http, thread, message).await?;
+        Ok(())
     }
 
-    pub fn clicked_button(&mut self, action: &str) {
-        match action {
-            "edit_compensation" => {
-                self.compensation = None;
-            }
-            &_ => {}
-        }
+    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
+        self.compensation.reset(&ctx.http, thread, action).await?;
+        Ok(())
     }
 }

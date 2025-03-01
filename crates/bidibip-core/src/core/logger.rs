@@ -30,7 +30,6 @@ impl DiscordLogConnector {
 
 pub struct ChannelWriter {
     connector: Arc<DiscordLogConnector>,
-    config: Arc<Config>,
 }
 
 pub struct FieldMessageVisitor(String);
@@ -60,7 +59,7 @@ where
                 event.record(&mut visitor);
                 let http = http.clone();
                 let channel = *channel;
-                let support_role = self.config.roles.support;
+                let support_role = Config::get().roles.support;
                 tokio::spawn(async move {
                     match level {
                         Level::INFO => {
@@ -80,8 +79,8 @@ where
     }
 }
 
-pub fn init_logger(config: Arc<Config>) -> Arc<DiscordLogConnector> {
-    let log_directory = &config.log_directory;
+pub fn init_logger() -> Arc<DiscordLogConnector> {
+    let log_directory = &Config::get().log_directory;
 
     // Create log directory
     fs::create_dir_all(log_directory).expect("Failed to create log directories");
@@ -138,7 +137,7 @@ pub fn init_logger(config: Arc<Config>) -> Arc<DiscordLogConnector> {
         )
         .with(
             // log to discord channels
-            ChannelWriter { connector: connector.clone(), config }
+            ChannelWriter { connector: connector.clone() }
         );
 
     tracing::subscriber::set_global_default(subscriber).expect("Failed to initialize tracing subscriber");

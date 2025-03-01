@@ -130,7 +130,7 @@ impl<T, E: std::fmt::Debug> ResultDebug<T, E> for Result<T, E> {
 
 #[macro_export]
 macro_rules! on_fail {
-    ($a:expr , $msg:expr) => {{
+    ($a:expr, $msg:expr) => {{
         $a.map_err(|err| {
             tracing::error!("{} : {}", $msg, err);
             err
@@ -140,27 +140,27 @@ macro_rules! on_fail {
 
 #[macro_export]
 macro_rules! assert_condition {
-    ($a:expr , $msg:expr) => {{
+    ($a:expr, $msg:expr) => {{
         if $a {
             Ok(())
             }
         else {
             tracing::error!("{}", $msg);
-            Err(Error::msg($msg))
+            Err(anyhow::Error::msg($msg))
         }
     }};
 }
 
 #[macro_export]
 macro_rules! assert_some {
-    ($a:expr , $msg:expr) => {{
+    ($a:expr, $msg:expr) => {{
         match $a {
             Some(a) => {
                 Ok(a)
             }
             None => {
                 tracing::error!("{}", $msg);
-                Err(Error::msg($msg))
+                Err(anyhow::Error::msg($msg))
             }
         }
     }};

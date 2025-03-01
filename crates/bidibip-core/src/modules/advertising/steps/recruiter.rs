@@ -1,89 +1,115 @@
 use crate::core::error::BidibipError;
-use crate::modules::advertising::ad_utils::{create_multi_button_options, create_text_input_options, ButtonDescription, Location};
-use crate::modules::advertising::{Advertising, Step};
+use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
+use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{Context, GuildChannel, Message};
+use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
+
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Location {
+    Remote,
+    OnSiteFlex(TextOption),
+    OnSite(TextOption),
+}
+
+#[serenity::async_trait]
+impl ResetStep for Location {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        match self {
+            Location::Remote => { Ok(()) }
+            Location::OnSiteFlex(val) => { val.delete(http, thread).await }
+            Location::OnSite(val) => { val.delete(http, thread).await }
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct RecruiterInfos {
-    step: Step,
-    location: Option<Location>,
-    studio: Option<String>,
-    responsibilities: Option<String>,
-    qualifications: Option<String>,
+    location: ButtonOption<Location>,
+    studio: TextOption,
+    responsibilities: TextOption,
+    qualifications: TextOption,
 }
 
-impl RecruiterInfos {
-    pub async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
+#[serenity::async_trait]
+impl ResetStep for RecruiterInfos {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        self.location.delete(http, thread).await?;
+        self.studio.delete(http, thread).await?;
+        self.responsibilities.delete(http, thread).await?;
+        self.qualifications.delete(http, thread).await?;
+        Ok(())
+    }
+}
 
-        if self.location.is_none() {
-            if self.step.test_or_set("LOCATION") { return Ok(false); }
-            create_multi_button_options::<Advertising>(&ctx.http, &thread, "Quelles sont les modalités de travail ?", vec![
-                ButtonDescription::new("location_remote", "🌍 Distanciel"),
-                ButtonDescription::new("location_flex", "🤷‍♀️ Télétravail possible"),
-                ButtonDescription::new("location_onsite", "🏣 Présentiel uniquement")
+#[serenity::async_trait]
+impl SubStep for RecruiterInfos {
+    async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
+        if self.location.is_unset() {
+            self.location.try_init(&ctx.http, thread, "Quelles sont les modalités de travail ?", vec![
+                ("🌍 Distanciel", Location::Remote),
+                ("🤷‍♀️ Télétravail possible", Location::OnSiteFlex(TextOption::default())),
+                ("🏣 Présentiel uniquement", Location::OnSiteFlex(TextOption::default())),
             ]).await?;
             return Ok(false);
         }
 
-        if self.studio.is_none() {
-            if self.step.test_or_set("STUDIO") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Quel est le nom de ton entreprise / studio ?", Some("studio")).await?;
+        if let Some(value) = self.location.value_mut() {
+            match value {
+                Location::Remote => {}
+                Location::OnSiteFlex(val) => {
+                    if val.is_unset() {
+                        val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await?;
+                        return Ok(false);
+                    }
+                }
+                Location::OnSite(val) => {
+                    if val.is_unset() {
+                        val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await?;
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+
+        if self.studio.is_unset() {
+            self.studio.try_init(&ctx.http, thread, "Quel est le nom de ton entreprise / studio ?").await?;
             return Ok(false);
         }
 
-        if self.responsibilities.is_none() {
-            if self.step.test_or_set("RESPONSIBILITIES") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Quelles sont les responsabilitées demandées ?", Some("responsibilities")).await?;
+        if self.responsibilities.is_unset() {
+            self.responsibilities.try_init(&ctx.http, thread, "Quelles sont les responsabilitées demandées ?").await?;
             return Ok(false);
         }
 
-        if self.qualifications.is_none() {
-            if self.step.test_or_set("QUALIFICATIONS") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Quelles sont les compétences requises ?", Some("qualifications")).await?;
+        if self.qualifications.is_unset() {
+            self.qualifications.try_init(&ctx.http, thread, "Quelles sont les compétences requises ?").await?;
             return Ok(false);
         }
-
-        self.step.test_or_set("finished");
 
         Ok(true)
     }
 
-    pub fn receive_message(&mut self, message: &Message) {
-        match self.step.value() {
-            "STUDIO" => {
-                self.studio = Some(message.content.clone());
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
+        self.studio.try_set(&ctx.http, thread, message).await?;
+        self.qualifications.try_set(&ctx.http, thread, message).await?;
+        self.responsibilities.try_set(&ctx.http, thread, message).await?;
+
+        if let Some(value) = self.location.value_mut() {
+            match value {
+                Location::Remote => {}
+                Location::OnSiteFlex(val) => { val.try_set(&ctx.http, thread, message).await?; }
+                Location::OnSite(val) => { val.try_set(&ctx.http, thread, message).await?; }
             }
-            "QUALIFICATIONS" => {
-                self.qualifications = Some(message.content.clone());
-            }
-            "RESPONSIBILITIES" => {
-                self.responsibilities = Some(message.content.clone());
-            }
-            _ => {}
         }
+        Ok(())
     }
 
-    pub fn clicked_button(&mut self, action: &str) {
-        match action {
-            /***************************/
-            "location_remote" => {
-                self.location = Some(Location::Remote);
-            }
-            "location_flex" => {
-                self.location = Some(Location::OnSiteFlex(None));
-            }
-            "location_onsite" => {
-                self.location = Some(Location::OnSite(None));
-            }
-            /***************************/
-            "edit_responsibilities" => {
-                self.responsibilities = None;
-            }
-            "edit_qualifications" => {
-                self.qualifications = None;
-            }
-            &_ => {}
-        }
+    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
+        self.studio.reset(&ctx.http, thread, action).await?;
+        self.qualifications.reset(&ctx.http, thread, action).await?;
+        self.responsibilities.reset(&ctx.http, thread, action).await?;
+        self.location.try_set(&ctx.http, thread, action).await?;
+        Ok(())
     }
 }

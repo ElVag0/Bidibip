@@ -25,7 +25,6 @@ pub trait BidibipModule: Sync + Send {
     // Get a list of available commands for this module
     fn fetch_commands(&self, _: &PermissionData) -> Vec<CreateCommandDetailed> { vec![] }
 
-
     async fn channel_create(&self, _: Context, _: GuildChannel) -> Result<(), BidibipError> {
         Ok(())
     }

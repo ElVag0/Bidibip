@@ -11,7 +11,6 @@ use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;
 
 pub struct Reglement {
-    config: Arc<Config>,
     reglement_config: ReglementConfig,
 }
 
@@ -48,8 +47,8 @@ impl BidibipModule for Reglement {
                 }
                 match component.data.kind {
                     ComponentInteractionDataKind::Button => {
-                        let member = on_fail!(GuildId::from(self.config.server_id).member(&ctx.http, component.user.id).await, "Failed to get member data")?;
-                        on_fail!(member.add_role(&ctx.http, self.config.roles.member).await, "Failed to give member role")?;
+                        let member = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http, component.user.id).await, "Failed to get member data")?;
+                        on_fail!(member.add_role(&ctx.http, Config::get().roles.member).await, "Failed to give member role")?;
                         component.defer(&ctx.http).await.on_fail("Failed to defer command interaction");
                     }
                     _ => {}
@@ -70,11 +69,11 @@ impl LoadModule<Reglement> for Reglement {
         "Outil de mise à jour automatique du réglement"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Reglement, Error> {
-        let config = shared_data.config.load_module_config::<Reglement, ReglementConfig>()?;
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Reglement, Error> {
+        let config = Config::get().load_module_config::<Reglement, ReglementConfig>()?;
         if config.reglement_channel == 0 {
             return Err(Error::msg("Invalid reglement channel id"));
         }
-        Ok(Reglement { config: shared_data.config.clone(), reglement_config: config })
+        Ok(Reglement { reglement_config: config })
     }
 }

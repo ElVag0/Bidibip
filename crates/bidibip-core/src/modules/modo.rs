@@ -14,7 +14,6 @@ use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
 use crate::{assert_some, on_fail};
 
 pub struct Modo {
-    config: Arc<Config>,
     modo_config: RwLock<ModoConfig>,
 }
 
@@ -39,9 +38,9 @@ impl LoadModule<Modo> for Modo {
         "Ouvre un canal directe avec la modération"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Modo, Error> {
-        let module = Self { config: shared_data.config.clone(), modo_config: Default::default() };
-        let modo_config = shared_data.config.load_module_config::<Modo, ModoConfig>()?;
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Modo, Error> {
+        let module = Self { modo_config: Default::default() };
+        let modo_config = Config::get().load_module_config::<Modo, ModoConfig>()?;
         if modo_config.modo_channel == 0 {
             return Err(Error::msg("Invalid modo channel id"));
         }
@@ -85,7 +84,7 @@ impl BidibipModule for Modo {
             let thread = assert_some!(thread, "Failed to get thread for modo command")?;
 
             on_fail!(thread.id.add_thread_member(&ctx.http, command.user.id).await, "Failed to add user to modo thread")?;
-            let mention_to_admins = self.config.roles.administrator.mention();
+            let mention_to_admins = Config::get().roles.administrator.mention();
 
             let mut embed = CreateEmbed::new().field("Canal de communication ouvert :robot:", format!("Tu es maintenant en communication directe avec les {}.\nA toi de nous dire ce qui ne va pas.", mention_to_admins), false);
 
@@ -107,7 +106,7 @@ impl BidibipModule for Modo {
                         .ephemeral(true)
                         .embed(CreateEmbed::new().title("Canal de communication ouvert").description(format!("Parle avec la modération ici : {}", thread.mention()))))).await, "Failed to send redirection message")?;
 
-            on_fail!(self.config.save_module_config::<Modo, ModoConfig>(&*modo_config), "Failed to save module config")?;
+            on_fail!(Config::get().save_module_config::<Modo, ModoConfig>(&*modo_config), "Failed to save module config")?;
         }
         Ok(())
     }

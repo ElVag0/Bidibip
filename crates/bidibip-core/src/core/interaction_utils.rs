@@ -1,10 +1,11 @@
-use std::fmt::Display;
-use serenity::all::ComponentInteractionData;
 use crate::modules::{BidibipModule, LoadModule};
+use serenity::all::ComponentInteractionData;
+use std::fmt::Display;
 
 pub fn make_custom_id<Module: BidibipModule + LoadModule<Module>>(action: &str, id: impl Display) -> String {
     format!("{}::{}::{}", Module::name(), action, id)
 }
+
 
 pub trait InteractionUtils {
     fn get_custom_id_data<Module: BidibipModule + LoadModule<Module>>(&self, action: &str) -> Option<String>;

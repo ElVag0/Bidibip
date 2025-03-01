@@ -1,83 +1,88 @@
 use crate::core::error::BidibipError;
-use crate::modules::advertising::ad_utils::{create_multi_button_options, create_text_input_options, ButtonDescription};
-use crate::modules::advertising::{Advertising, Step};
+use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
+use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{Context, GuildChannel, Message};
+use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Compensation {
-    None,
-    Unset,
-    Set(String)
+    No,
+    Yes(TextOption),
+}
+#[serenity::async_trait]
+impl ResetStep for Compensation {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        match self {
+            Compensation::No => { Ok(()) }
+            Compensation::Yes(obj) => { obj.delete(http, thread).await }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct InternshipInfos {
-    step: Step,
-    pub duration: Option<String>,
-    pub compensation: Option<Compensation>, // Paid or not
+    pub duration: TextOption,
+    pub compensation: ButtonOption<Compensation>, // Paid or not
 }
 
-impl InternshipInfos {
-    pub async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
-        if self.duration.is_none() {
-            if self.step.test_or_set("DURATION") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Durée du stage", Some("duration")).await?;
+#[serenity::async_trait]
+impl ResetStep for InternshipInfos {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        self.duration.delete(http, thread).await?;
+        self.compensation.delete(http, thread).await?;
+        Ok(())
+    }
+}
+
+#[serenity::async_trait]
+impl SubStep for InternshipInfos {
+    async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
+        if self.duration.is_unset() {
+            self.duration.try_init(&ctx.http, thread, "Durée du stage").await?;
             return Ok(false);
         }
 
-        match &self.compensation {
-            None => {
-                if self.step.test_or_set("REMUNERATION") { return Ok(false); }
-                create_multi_button_options::<Advertising>(&ctx.http, &thread, "Le stage est-il rémunéré ?", vec![
-                    ButtonDescription::new("remuneration_yes", "oui"),
-                    ButtonDescription::new("remuneration_no", "non"),
-                ]).await?;
-                return Ok(false);
-            }
-            Some(value) => {
-                match value {
-                    Compensation::Unset => {
-                        if self.step.test_or_set("REMUNERATION_VALUE") { return Ok(false); }
-                        create_text_input_options::<Advertising>(&ctx.http, &thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)", Some("compensation")).await?;
-                        return Ok(false);}
-                    _ => {}
+        if self.compensation.is_unset() {
+            self.compensation.try_init(&ctx.http, thread, "Le stage est-il rémunéré ?", vec![
+                ("Oui", Compensation::Yes(TextOption::default())),
+                ("No", Compensation::No),
+            ]).await?;
+            return Ok(false);
+        }
+        if let Some(compensation) = self.compensation.value_mut() {
+            if let Compensation::Yes(value) = compensation {
+                if value.is_unset() {
+                    value.try_init(&ctx.http, thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)").await?;
+                    return Ok(false);
                 }
             }
         }
-
-        self.step.test_or_set("finished");
         Ok(true)
     }
 
 
-    pub fn receive_message(&mut self, message: &Message) {
-        match self.step.value() {
-            "DURATION" => {
-                self.duration = Some(message.content.clone())
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
+        self.duration.try_set(&ctx.http, thread, message).await?;
+        if let Some(compensation) = self.compensation.value_mut() {
+            if let Compensation::Yes(value) = compensation {
+                if value.is_unset() {
+                    value.try_set(&ctx.http, thread, message).await?;
+                }
             }
-            "REMUNERATION_VALUE" => {
-                self.compensation = Some(Compensation::Set(message.content.clone()))
-            }
-            _ => {}
         }
+        Ok(())
     }
 
-    pub fn clicked_button(&mut self, action: &str) {
-        match action {
-            "remuneration_yes" => {
-                self.compensation = Some(Compensation::Unset);
+    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
+        self.duration.reset(&ctx.http, thread, action).await?;
+        self.compensation.try_set(&ctx.http, thread, action).await?;
+        if let Some(compensation) = self.compensation.value_mut() {
+            if let Compensation::Yes(value) = compensation {
+                if value.is_unset() {
+                    value.reset(&ctx.http, thread, action).await?;
+                }
             }
-            "remuneration_no" => {
-                self.compensation = Some(Compensation::None);
-            }
-            "edit_compensation" => {
-                self.compensation = Some(Compensation::Unset);
-            }
-            "edit_duration" => {
-                self.duration = None;
-            }
-            &_ => {}
         }
+        Ok(())
     }
 }

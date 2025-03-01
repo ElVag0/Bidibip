@@ -5,6 +5,7 @@ use serenity::all::{ChannelId, Context, CreateMessage, GuildId, Member, Mentiona
 use crate::core::module::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
 use rand::seq::{IndexedRandom};
+use crate::core::config::Config;
 use crate::core::error::BidibipError;
 use crate::on_fail;
 
@@ -30,8 +31,8 @@ impl LoadModule<Welcome> for Welcome {
         "messages de bienvenue et de départ"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Welcome, Error> {
-        let welcome_config = shared_data.config.load_module_config::<Welcome, WelcomeConfig>()?;
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Welcome, Error> {
+        let welcome_config = Config::get().load_module_config::<Welcome, WelcomeConfig>()?;
         Ok(Welcome { welcome_config })
     }
 }

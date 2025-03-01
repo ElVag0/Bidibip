@@ -1,53 +1,48 @@
 use crate::core::error::BidibipError;
-use crate::modules::advertising::ad_utils::create_text_input_options;
-use crate::modules::advertising::{Advertising, Step};
+use crate::modules::advertising::ad_utils::{TextOption};
+use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{Context, GuildChannel, Message};
+use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct WorkStudyInfos {
-    step: Step,
-    pub duration: Option<String>,
-    pub compensation: Option<String>,
+    pub duration: TextOption,
+    pub compensation: TextOption,
 }
 
-impl WorkStudyInfos {
-    pub async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
-        if self.duration.is_none() {
-            if self.step.test_or_set("DURATION") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Durée du contrat", Some("duration")).await?;
+#[serenity::async_trait]
+impl ResetStep for WorkStudyInfos {
+    async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
+        self.duration.delete(http, thread).await?;
+        self.compensation.delete(http, thread).await?;
+        Ok(())
+    }
+}
+
+#[serenity::async_trait]
+impl SubStep for WorkStudyInfos {
+    async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
+        if self.duration.is_unset() {
+            self.duration.try_init(&ctx.http, thread, "Durée du contrat").await?;
             return Ok(false);
         }
-        if self.compensation.is_none() {
-            if self.step.test_or_set("COMPENSATION") { return Ok(false); }
-            create_text_input_options::<Advertising>(&ctx.http, &thread, "Rémunération", Some("compensation")).await?;
+
+        if self.compensation.is_unset() {
+            self.compensation.try_init(&ctx.http, thread, "Rémunération").await?;
             return Ok(false);
         }
-        self.step.test_or_set("finished");
         Ok(true)
     }
 
-    pub fn receive_message(&mut self, message: &Message) {
-        match self.step.value() {
-            "DURATION" => {
-                self.duration = Some(message.content.clone())
-            }
-            "COMPENSATION" => {
-                self.compensation = Some(message.content.clone())
-            }
-            _ => {}
-        }
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
+        self.duration.try_set(&ctx.http, thread, message).await?;
+        self.compensation.try_set(&ctx.http, thread, message).await?;
+        Ok(())
     }
 
-    pub fn clicked_button(&mut self, action: &str) {
-        match action {
-            "edit_compensation" => {
-                self.compensation = None;
-            }
-            "edit_duration" => {
-                self.duration = None;
-            }
-            &_ => {}
-        }
+    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
+        self.duration.reset(&ctx.http, thread, action).await?;
+        self.compensation.reset(&ctx.http, thread, action).await?;
+        Ok(())
     }
 }

@@ -12,7 +12,6 @@ use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;
 
 pub struct History {
-    config: Arc<Config>,
 }
 
 impl LoadModule<History> for History {
@@ -24,8 +23,8 @@ impl LoadModule<History> for History {
         "Historique des messages modifiés et supprimés"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<History, Error> {
-        Ok(History { config: shared_data.config.clone() })
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<History, Error> {
+        Ok(History { })
     }
 }
 
@@ -38,7 +37,7 @@ impl BidibipModule for History {
         if let Some(deleted) = ctx.cache.message(channel_id, deleted_message_id) {
 
             // Skip self
-            if deleted.author.id.get() == self.config.application_id.get() {
+            if deleted.author.id.get() == Config::get().application_id.get() {
                 return Ok(());
             }
 
@@ -76,7 +75,7 @@ impl BidibipModule for History {
                     format!("{} ({})", Username::from_user(user).safe_full(), user.id)
                 }
             };
-            self.config.channels.log_channel.send_message(
+            Config::get().channels.log_channel.send_message(
                 &ctx.http,
                 CreateMessage::new().embed(
                     CreateEmbed::new()
@@ -87,7 +86,7 @@ impl BidibipModule for History {
 
             info!(target: "log","Message {} de {} du {} supprimé par {} : {}", deleted_message_id.link(channel_id, guild_id), user_name, date, from_name, old_message_content);
         } else {
-            self.config.channels.log_channel.send_message(
+            Config::get().channels.log_channel.send_message(
                 &ctx.http,
                 CreateMessage::new().embed(
                     CreateEmbed::new()
@@ -121,7 +120,7 @@ impl BidibipModule for History {
         if let Some(new) = new {
 
             // Skip self
-            if new.author.id.get() == self.config.application_id.get() {
+            if new.author.id.get() == Config::get().application_id.get() {
                 return Ok(());
             }
 
@@ -169,7 +168,7 @@ impl BidibipModule for History {
             embed = embed.field("nouveau", &new_text, false);
         }
 
-        self.config.channels.log_channel.send_message(
+        Config::get().channels.log_channel.send_message(
             &ctx.http,
             CreateMessage::new().embed(embed)).await.on_fail("Failed to print message rename log");
 

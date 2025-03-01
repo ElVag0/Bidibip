@@ -43,7 +43,6 @@ impl PermissionData {
 }
 
 pub struct BidibipSharedData {
-    pub config: Arc<Config>,
     pub modules: RwLock<Vec<ModuleData>>,
     pub permissions: RwLock<PermissionData>,
 }
@@ -51,37 +50,37 @@ pub struct BidibipSharedData {
 impl GlobalInterface {
     // Default constructor
     // The log connector is used to provide the log channel to the logger
-    pub async fn new(config: Arc<Config>, log_connector: Arc<DiscordLogConnector>) -> Self {
-        let shared_data = Arc::new(BidibipSharedData { config, modules: Default::default(), permissions: Default::default() });
+    pub async fn new(log_connector: Arc<DiscordLogConnector>) -> Self {
+        let shared_data = Arc::new(BidibipSharedData { modules: Default::default(), permissions: Default::default() });
         load_modules(&shared_data).await;
         Self { shared_data, log_connector }
     }
 
     pub async fn fetch_roles(&self, ctx: &Context) {
-        let roles = match GuildId::from(self.shared_data.config.server_id).roles(&ctx.http).await {
+        let roles = match GuildId::from(Config::get().server_id).roles(&ctx.http).await {
             Ok(roles) => { roles }
             Err(err) => {
                 return error!("Failed to fetch roles : {}", err);
             }
         };
 
-        let member_role = match roles.get(&self.shared_data.config.roles.member) {
+        let member_role = match roles.get(&Config::get().roles.member) {
             None => {
-                return error!("Member role with id {} does not exists", self.shared_data.config.roles.member);
+                return error!("Member role with id {} does not exists", Config::get().roles.member);
             }
             Some(role) => { role }
         };
 
-        let admin_role = match roles.get(&self.shared_data.config.roles.administrator) {
+        let admin_role = match roles.get(&Config::get().roles.administrator) {
             None => {
-                return error!("Administrator role with id {} does not exists", self.shared_data.config.roles.administrator);
+                return error!("Administrator role with id {} does not exists", Config::get().roles.administrator);
             }
             Some(role) => { role }
         };
 
-        let helper_role = match roles.get(&self.shared_data.config.roles.helper) {
+        let helper_role = match roles.get(&Config::get().roles.helper) {
             None => {
-                return error!("Helper role with id {} does not exists", self.shared_data.config.roles.helper);
+                return error!("Helper role with id {} does not exists", Config::get().roles.helper);
             }
             Some(role) => { role }
         };
@@ -123,7 +122,7 @@ impl GlobalInterface {
             }
         }
 
-        let guild_id = self.shared_data.config.server_id;
+        let guild_id = Config::get().server_id;
 
         let glob = Command::get_global_commands(&ctx.http).await.unwrap();
         if !glob.is_empty() {
@@ -246,7 +245,7 @@ impl EventHandler for GlobalInterface {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        self.log_connector.init_for_channel(self.shared_data.config.channels.log_channel, ctx.http.clone());
+        self.log_connector.init_for_channel(Config::get().channels.log_channel, ctx.http.clone());
 
         self.fetch_roles(&ctx).await;
 
@@ -262,11 +261,14 @@ impl EventHandler for GlobalInterface {
             module.command_names = command_names;
         }
 
+        let mut init_message = String::new();
+
         for module in self.shared_data.modules.read().await.deref() {
             #[allow(unused)]
             module.module.ready(ctx.clone(), ready.clone()).await;
-            info!("Initialized module {}", module.name);
+            init_message += format!("{}, ", module.name).as_str();
         }
+        info!("Initialized modules {}", init_message);
 
         info!("Je suis prêt à botter des culs ! >:)");
     }

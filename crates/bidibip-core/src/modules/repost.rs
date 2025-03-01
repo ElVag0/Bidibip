@@ -21,7 +21,6 @@ use crate::modules::{BidibipModule, LoadModule};
 use crate::{assert_condition, assert_some, on_fail};
 
 pub struct Repost {
-    config: Arc<Config>,
     repost_config: RwLock<RepostConfig>,
 }
 
@@ -157,7 +156,7 @@ impl Repost {
     }
 
     async fn save_config(&self, config: &RepostConfig) -> Result<(), Error> {
-        if let Err(err) = self.config.save_module_config::<Repost, RepostConfig>(&config) {
+        if let Err(err) = Config::get().save_module_config::<Repost, RepostConfig>(&config) {
             Err(Error::msg(format!("Failed to save repost config : {}", err)))
         } else {
             Ok(())
@@ -416,7 +415,7 @@ impl BidibipModule for Repost {
                 let repost_config = assert_some!(config.forums.get(&parent), "Failed to get repost config")?.clone();
                 let messages = on_fail!(thread.messages(&ctx.http, GetMessages::new().limit(1)).await,"Failed to get first messages in thread")?;
                 let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
-                let thread_owner = on_fail!(GuildId::from(self.config.server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
+                let thread_owner = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
                 let forum_name = on_fail!(parent.name(&ctx.http).await, "Failed to get forum name")?;
 
                 if repost_config.vote_enabled {
@@ -475,8 +474,8 @@ impl LoadModule<Repost> for Repost {
         "Permet de lier un salon à un forum"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Repost, Error> {
-        let welcome_config = shared_data.config.load_module_config::<Repost, RepostConfig>()?;
-        Ok(Repost { config: shared_data.config.clone(), repost_config: RwLock::new(welcome_config) })
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Repost, Error> {
+        let welcome_config =Config::get().load_module_config::<Repost, RepostConfig>()?;
+        Ok(Repost { repost_config: RwLock::new(welcome_config) })
     }
 }

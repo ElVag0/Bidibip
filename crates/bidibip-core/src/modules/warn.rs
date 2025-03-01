@@ -18,7 +18,6 @@ use crate::{assert_some, on_fail};
 use crate::core::error::BidibipError;
 
 pub struct Warn {
-    config: Arc<Config>,
     warn_config: RwLock<WarnConfig>,
     // Key is modal id, value is (user id, action)
     pending_warn_actions: Mutex<HashMap<String, (User, ActionType)>>,
@@ -59,9 +58,9 @@ impl LoadModule<Warn> for Warn {
         "Sanctions & historique des remarques"
     }
 
-    async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<Warn, Error> {
-        let module = Self { config: shared_data.config.clone(), warn_config: Default::default(), pending_warn_actions: Default::default() };
-        let warn_config = shared_data.config.load_module_config::<Warn, WarnConfig>()?;
+    async fn load(_: &Arc<BidibipSharedData>) -> Result<Warn, Error> {
+        let module = Self { warn_config: Default::default(), pending_warn_actions: Default::default() };
+        let warn_config = Config::get().load_module_config::<Warn, WarnConfig>()?;
         if warn_config.moderation_warn_channel == 0 {
             return Err(Error::msg("Invalid warn channel id"));
         }
@@ -215,7 +214,7 @@ impl BidibipModule for Warn {
 
     async fn guild_audit_log_entry_create(&self, ctx: Context, entry: AuditLogEntry, _: GuildId) -> Result<(), BidibipError> {
         if let Action::Member(member_action) = entry.action {
-            if entry.user_id.get() != self.config.application_id.get() {
+            if entry.user_id.get() != Config::get().application_id.get() {
                 if let Some(target) = entry.target_id {
                     let to = on_fail!(UserId::from(target.get()).to_user(&ctx.http).await, "Failed to get user")?;
                     let from = on_fail!(entry.user_id.to_user(&ctx.http).await, "Failed to get user")?;
@@ -235,7 +234,7 @@ impl BidibipModule for Warn {
                             self.handle_warn_action(&ctx.http, warn_data, false, ActionType::Kick).await?;
                         }
                         MemberAction::Update => {
-                            let member = on_fail!(GuildId::from(self.config.server_id).member(&ctx.http, to.id).await, "Failed to get member data")?;
+                            let member = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http, to.id).await, "Failed to get member data")?;
 
                             if member.communication_disabled_until.is_some() {
                                 let warn_data = UserWarn {
@@ -287,7 +286,7 @@ impl BidibipModule for Warn {
                     }
                 }
 
-                if let Err(err) = self.config.channels.staff_channel.send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif ! {}", Username::from_user(&new_member.user).full(), data.warns.len(), last))).await {
+                if let Err(err) = Config::get().channels.staff_channel.send_message(&ctx.http, CreateMessage::new().content(format!("{} vient de rejoindre le serveur avec {} warn(s) à son actif ! {}", Username::from_user(&new_member.user).full(), data.warns.len(), last))).await {
                     error!("Failed to send message : {}", err)
                 }
             }
@@ -436,7 +435,7 @@ impl Warn {
 
         Ok(warn_config.moderation_warn_channel.send_message(http,
                                                             CreateMessage::new()
-                                                                .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), self.config.roles.administrator.mention()))
+                                                                .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), Config::get().roles.administrator.mention()))
                                                                 .embed(embed)
                                                                 .components(vec![
                                                                     CreateActionRow::Buttons(vec![
@@ -452,7 +451,7 @@ impl Warn {
         let warn_list = &mut warn_config.warns.entry(warn_data.to.id()).or_default().warns;
         warn_list.push(warn_data.clone());
         // Update database
-        self.config.save_module_config::<Self, WarnConfig>(&*warn_config).unwrap();
+        Config::get().save_module_config::<Self, WarnConfig>(&*warn_config).unwrap();
     }
 
     async fn send_warn_public_message(&self, http: &Http, warn_data: &UserWarn, action: &ActionType) -> Result<(), BidibipError> {
@@ -491,7 +490,7 @@ impl Warn {
     }
 
     async fn send_warn_private_message(&self, http: &Http, warn_data: &UserWarn, action: &ActionType) -> Result<(), BidibipError> {
-        let server_name = match self.config.server_id.to_partial_guild(http).await {
+        let server_name = match Config::get().server_id.to_partial_guild(http).await {
             Ok(guild) => { guild.name }
             Err(err) => {
                 error!("Failed to get server data : {}", err);
@@ -499,7 +498,7 @@ impl Warn {
             }
         };
 
-        match GuildId::from(self.config.server_id).member(http, warn_data.to.id()).await {
+        match GuildId::from(Config::get().server_id).member(http, warn_data.to.id()).await {
             Ok(member) => {
                 match action {
                     ActionType::Ban => {
@@ -534,7 +533,7 @@ impl Warn {
 
     /// Actually kick or ban the person
     async fn apply_warn(&self, http: &Http, warn_data: &UserWarn, action: &ActionType) -> Result<(), BidibipError> {
-        let mut member = GuildId::from(self.config.server_id).member(http, warn_data.to.id()).await?;
+        let mut member = GuildId::from(Config::get().server_id).member(http, warn_data.to.id()).await?;
         match action {
             ActionType::Ban => {
                 member.ban_with_reason(http, 0, warn_data.reason.as_str()).await.on_fail("Failed to ban member");
