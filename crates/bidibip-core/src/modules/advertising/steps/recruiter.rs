@@ -2,8 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
-
+use serenity::all::{ChannelId, Colour, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Location {
@@ -44,12 +43,56 @@ impl ResetStep for RecruiterInfos {
 
 #[serenity::async_trait]
 impl SubStep for RecruiterInfos {
+    fn fill_message(&self, main_fields: &mut Vec<(String, String, bool)>, other_categories: &mut Vec<CreateEmbed>) {
+        other_categories.push(
+            CreateEmbed::new()
+                .color(Colour::PURPLE)
+                .title("Qualifications")
+                .description(match self.qualifications.value() {
+                    None => { "[Donnée manquante]" }
+                    Some(value) => { value.as_str() }
+                }));
+        other_categories.push(
+            CreateEmbed::new()
+                .color(Colour::PURPLE)
+                .title("Responsabilités")
+                .description(match self.responsibilities.value() {
+                    None => { "[Donnée manquante]" }
+                    Some(value) => { value.as_str() }
+                }));
+
+        main_fields.push(("Emplacement".to_string(), match self.location.value() {
+            None => { "[Donnée manquante]".to_string() }
+            Some(value) => {
+                match value {
+                    Location::Remote => { "🌍 Distanciel uniquement".to_string() }
+                    Location::OnSiteFlex(location) => {
+                        format!("{} (🤷‍♀️ Télétravail possible)", match location.value() {
+                            None => { "[Donnée manquante]" }
+                            Some(location) => { location.as_str() }
+                        })
+                    }
+                    Location::OnSite(location) => {
+                        format!("{} (🏣 sur site)", match location.value() {
+                            None => { "[Donnée manquante]" }
+                            Some(location) => { location.as_str() }
+                        })
+                    }
+                }
+            }
+        }, true));
+
+        main_fields.push(("Entreprise".to_string(), match self.studio.value() {
+            None => { "[Donnée manquante]".to_string() }
+            Some(value) => { value.clone() }
+        }, true));
+    }
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.location.is_unset() {
             self.location.try_init(&ctx.http, thread, "Quelles sont les modalités de travail ?", vec![
                 ("🌍 Distanciel", Location::Remote),
                 ("🤷‍♀️ Télétravail possible", Location::OnSiteFlex(TextOption::default())),
-                ("🏣 Présentiel uniquement", Location::OnSiteFlex(TextOption::default())),
+                ("🏣 Présentiel uniquement", Location::OnSite(TextOption::default())),
             ]).await?;
             return Ok(false);
         }

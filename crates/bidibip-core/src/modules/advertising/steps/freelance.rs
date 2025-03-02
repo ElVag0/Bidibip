@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::TextOption;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Context, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct FreelanceInfos {
@@ -21,6 +21,17 @@ impl ResetStep for FreelanceInfos {
 
 #[serenity::async_trait]
 impl SubStep for FreelanceInfos {
+    fn fill_message(&self, main_fields: &mut Vec<(String, String, bool)>, _: &mut Vec<CreateEmbed>) {
+        main_fields.push(("Durée".to_string(), match self.duration.value() {
+            None => { "[Donnée manquante]".to_string() }
+            Some(value) => { value.clone() }
+        }, true));
+        main_fields.push(("Rémunération".to_string(), match self.compensation.value() {
+            None => { "[Donnée manquante]".to_string() }
+            Some(value) => { value.clone() }
+        }, true));
+    }
+
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.duration.is_unset() {
             self.duration.try_init(&ctx.http, thread, "Durée du contrat").await?;

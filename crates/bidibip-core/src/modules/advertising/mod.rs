@@ -53,7 +53,7 @@ impl Default for AdvertisingConfig {
 impl Advertising {
     async fn start_procedure(&self, ctx: &Context, thread: GuildChannel, user: &User, config: &mut MainSteps) -> Result<(), BidibipError> {
         on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content(format!("# Bienvenue dans le formulaire de création d'annonce {} !", user.name))).await, "Failed to send welcome message")?;
-        config.advance(ctx, &thread).await?;
+        self.advance_or_print(config, ctx, &thread, user).await?;
         Ok(())
     }
 
@@ -67,6 +67,13 @@ impl Advertising {
         } else {
             Ok(false)
         }
+    }
+
+    async fn advance_or_print(&self, config: &mut MainSteps, ctx: &Context, thread: &GuildChannel, user: &User) -> Result<(), BidibipError> {
+        if config.advance(ctx, thread).await? {
+            config.send_test_message_to_channel(ctx, &thread.id, &user).await?;
+        };
+        Ok(())
     }
 }
 
@@ -135,8 +142,8 @@ impl BidibipModule for Advertising {
     }
 
     async fn message(&self, ctx: Context, message: Message) -> Result<(), BidibipError> {
-        let config = self.ad_config.write();
-        if let Some((edition_thread, ad_config)) = config.await.in_progress_ad.get_mut(&message.author.id) {
+        let mut config = self.ad_config.write().await;
+        if let Some((edition_thread, ad_config)) = config.in_progress_ad.get_mut(&message.author.id) {
             // Wrong channel
             if *edition_thread != message.channel_id { return Ok(()); }
 
@@ -148,7 +155,9 @@ impl BidibipModule for Advertising {
 
             // Move to next step
             let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-            ad_config.advance(&ctx, &guild_channel).await?;
+            self.advance_or_print(ad_config, &ctx, &guild_channel, &message.author).await?;
+            // Save modifications
+            on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&config), "failed to save config")?;
         }
 
         Ok(())
@@ -183,7 +192,7 @@ impl BidibipModule for Advertising {
 
                         // Move to next step
                         let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-                        in_progress.advance(&ctx, &guild_channel).await?;
+                        self.advance_or_print(in_progress, &ctx, &guild_channel, &component.user).await?;
                     }
 
                     // Save modifications

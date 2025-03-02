@@ -154,11 +154,9 @@ impl Config {
     }
 
     pub fn get() -> &'static Self {
-        unsafe {
-            match GLOBAL_CONFIG.get() {
-                None => { panic!("Global config have not been initialized using GLOBAL_CONFIG::init(path)") }
-                Some(elem) => { elem }
-            }
+        match GLOBAL_CONFIG.get() {
+            None => { panic!("Global config have not been initialized using GLOBAL_CONFIG::init(path)") }
+            Some(elem) => { elem }
         }
     }
 

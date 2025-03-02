@@ -11,7 +11,8 @@ use crate::modules::advertising::steps::worker::WorkerInfos;
 use crate::modules::advertising::steps::workstudy::WorkStudyInfos;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Context, CreateEmbed, CreateMessage, GuildChannel, Http, Message};
+use serenity::all::{ButtonStyle, ChannelId, Colour, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildChannel, Http, Message, MessageId, User};
+use serenity::builder::CreateButton;
 use crate::on_fail;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -74,6 +75,7 @@ pub struct MainSteps {
     pub is_recruiter: ButtonOption<What>,
     pub contact: ButtonOption<Contact>,
     pub other_urls: TextOption,
+    demo_message: Option<MessageId>,
 }
 
 #[serenity::async_trait]
@@ -113,6 +115,7 @@ impl SubStep for MainSteps {
             ]).await?;
             return Ok(false);
         }
+
         if let Some(kind) = self.kind.value_mut() {
             if !match kind {
                 Contract::Volunteering(data) => { data.advance(ctx, thread).await? }
@@ -125,12 +128,13 @@ impl SubStep for MainSteps {
         }
 
         if self.is_recruiter.is_unset() {
-            self.is_recruiter.try_init(&ctx.http, thread, "Quel type de contrat recherches-tu ?", vec![
+            self.is_recruiter.try_init(&ctx.http, thread, "Es-tu recruteur ou recherches tu du travail ?", vec![
                 ("🔧 Je cherche du travail", What::Worker(WorkerInfos::default())),
                 ("🕵️‍♀️ Je recrute", What::Recruiter(RecruiterInfos::default())),
             ]).await?;
             return Ok(false);
         }
+
         if let Some(recruiter) = self.is_recruiter.value_mut() {
             if !match recruiter {
                 What::Recruiter(infos) => { infos.advance(ctx, thread).await? }
@@ -159,8 +163,6 @@ impl SubStep for MainSteps {
             return Ok(false);
         }
 
-        println!("finished");
-        on_fail!(thread.send_message(&ctx.http, self.create_message()).await, "Failed to send final message")?;
         Ok(true)
     }
 
@@ -209,7 +211,7 @@ impl SubStep for MainSteps {
 }
 
 impl MainSteps {
-    fn create_message(&self) -> CreateMessage {
+    pub fn create_message(&mut self, user: &User) -> CreateMessage {
         let mut message = CreateMessage::new();
 
         let title = match &self.title.value() {
@@ -222,28 +224,112 @@ impl MainSteps {
             Some(title) => { title.as_str() }
         };
 
-        let mut main_embed = CreateEmbed::new()
-            .title(title)
-            .description(format!("Annonce de {}:\n{}", "TODO : INSERT AUTHOR", description));
-
-        if let Some(kind) = &self.kind.value() {
-            match kind {
-                Contract::Volunteering(_) => {}
-                Contract::Internship(_) => {}
-                Contract::Freelance(infos) => {
-                    main_embed = main_embed.field("Durée", match infos.duration.value() {
-                        None => { "[non spécifié]" }
-                        Some(duration) => { duration.as_str() }
-                    }, false);
+        let goal = match self.is_recruiter.value() {
+            None => { "[Objectif manquant]".to_string() }
+            Some(what) => {
+                match what {
+                    What::Recruiter(_) => {
+                        let kind = match self.kind.value() {
+                            None => { "[Type manquant]" }
+                            Some(kind) => {
+                                match kind {
+                                    Contract::Volunteering(_) => { "un.e volontaire" }
+                                    Contract::Internship(_) => { "un.e stagiaire" }
+                                    Contract::Freelance(_) => { "un.e freelance" }
+                                    Contract::WorkStudy(_) => { "un.e alternant.e" }
+                                    Contract::FixedTerm(_) => { "pour un.e CDD" }
+                                    Contract::OpenEnded(_) => { "pour un.e CDI" }
+                                }
+                            }
+                        };
+                        format!("{} recrute {}", Username::from_user(user).safe_full(), kind)
+                    }
+                    What::Worker(_) => {
+                        let kind = match self.kind.value() {
+                            None => { "[Type manquant]" }
+                            Some(kind) => {
+                                match kind {
+                                    Contract::Volunteering(_) => { "volontaire" }
+                                    Contract::Internship(_) => { "candidat.e pour un stage" }
+                                    Contract::Freelance(_) => { "un.e freelance" }
+                                    Contract::WorkStudy(_) => { "candidat.e pour une alternance" }
+                                    Contract::FixedTerm(_) => { "candidat.e pour un CDD" }
+                                    Contract::OpenEnded(_) => { "candidat.e pour un CDI" }
+                                }
+                            }
+                        };
+                        format!("{} est {}", Username::from_user(user).safe_full(), kind)
+                    }
                 }
-                Contract::WorkStudy(_) => {}
-                Contract::FixedTerm(_) => {}
-                Contract::OpenEnded(_) => {}
             }
+        };
+
+        let mut main_embed = CreateEmbed::new()
+            .author(CreateEmbedAuthor::new(goal).icon_url(if let Some(avatar) = user.avatar_url() { avatar } else { user.default_avatar_url() }))
+            .title(title)
+            .color(Colour::PURPLE)
+            .description(format!("{}", description));
+
+
+        let mut fields = vec![];
+        let mut embeds = vec![];
+
+        let mut items = self.get_dependencies();
+        while let Some(item) = items.pop() {
+            item.fill_message(&mut fields, &mut embeds);
+            items.append(&mut item.get_dependencies());
         }
 
-        message = message.embed(main_embed);
+        for field in fields {
+            main_embed = main_embed.field(field.0, field.1, field.2);
+        }
+
+        let mut last_embed = CreateEmbed::new()
+            .color(Colour::PURPLE)
+            .title("Contact")
+            .description(match self.contact.value() {
+                None => { "[Donnée manquante]".to_string() }
+                Some(contact) => {
+                    match contact {
+                        Contact::Discord => { format!("Discord : {}", Username::from_user(user).full()) }
+                        Contact::Other(other) => {
+                            match other.value() {
+                                None => { "[Donnée manquante]".to_string() }
+                                Some(val) => { val.clone() }
+                            }
+                        }
+                    }
+                }
+            });
+
+        if let Some(other) = self.other_urls.value() {
+            last_embed = last_embed.field("Autre", other, false);
+        }
+
+        embeds.push(last_embed);
+
+        #[derive(Serialize, Deserialize, Clone, Default)]
+        pub struct MainSteps {
+            pub contact: ButtonOption<Contact>,
+            pub other_urls: TextOption,
+            demo_message: Option<MessageId>,
+        }
+        embeds.insert(0, main_embed);
+
+        message = message.embeds(embeds);
 
         message
+    }
+
+    pub async fn send_test_message_to_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
+        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![CreateButton::new("publish").label("Publier").style(ButtonStyle::Success)])]);
+
+        if let Some(old_message) = self.demo_message {
+            #[allow(unused)]
+            thread.delete_message(&ctx.http, old_message).await;
+        }
+
+        self.demo_message = Some(on_fail!(thread.send_message(&ctx.http, message).await, "Failed to send final message")?.id);
+        Ok(())
     }
 }
