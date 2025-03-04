@@ -2,10 +2,10 @@ use std::collections::{HashMap};
 use std::fmt::Display;
 use std::str::FromStr;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ActionRowComponent, ButtonKind, ButtonStyle, ChannelId, CreateActionRow, CreateButton, CreateMessage, EditMessage, GuildChannel, Http, Message, MessageId};
+use serenity::all::{ActionRowComponent, ButtonKind, ButtonStyle, ChannelId, ComponentInteraction, CreateActionRow, CreateButton, CreateInputText, CreateInteractionResponse, CreateMessage, CreateModal, EditMessage, GuildChannel, Http, InputTextStyle, Message, MessageId};
 use crate::core::config::ButtonId;
 use crate::core::error::BidibipError;
-use crate::core::interaction_utils::make_custom_id;
+use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::modules::advertising::Advertising;
 use crate::{assert_some, on_fail};
 use crate::modules::advertising::steps::ResetStep;
@@ -30,7 +30,6 @@ impl<T: Clone + ResetStep + Send + Sync> ResetStep for ButtonOption<T> {
             for button in buttons.keys() {
                 ButtonId::from(*button).free()?;
             }
-
         }
         self.value = None;
         self.question_options = None;
@@ -50,40 +49,44 @@ impl<T: Clone + ResetStep> Default for ButtonOption<T> {
 
 impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
     // Return true if value was modified. To be modified you should have called init() before
-    pub async fn try_set(&mut self, http: &Http, channel: &ChannelId, action: &str) -> Result<bool, BidibipError> {
+    pub async fn try_set(&mut self, http: &Http, component: &ComponentInteraction) -> Result<bool, BidibipError> {
         if let Some((question_message, options)) = &self.question_options {
+            if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>() {
+                let id = match u64::from_str(action.as_str()) {
+                    Ok(val) => { val }
+                    Err(_) => { return Ok(false) }
+                };
 
-            let id = match u64::from_str(action) {
-                Ok(val) => {val}
-                Err(_) => {return Ok(false)}
-            };
+                if let Some(option) = options.get(&id) {
+                    on_fail!(component.defer(&http).await, "failed to defer interaction")?;
 
-            if let Some(option) = options.get(&id) {
-
-                if let Some(value) = &mut self.value {
-                    value.delete(http, channel).await?;
-                }
+                    if let Some(value) = &mut self.value {
+                        value.delete(http, &component.channel_id).await?;
+                    }
 
 
-                self.value = Some(option.clone());
-                let mut question_message = on_fail!(channel.message(http, question_message).await, "Failed to get question message".to_string())?;
-                let mut components = vec![];
-                for row in &question_message.components {
-                    let mut new_buttons = vec![];
-                    for component in &row.components {
-                        if let ActionRowComponent::Button(button) = component {
-                            if let ButtonKind::NonLink { custom_id, style: _style } = &button.data {
-                                let label = assert_some!(button.label.clone(), "this button doesn't have a valid label")?;
-                                new_buttons.push(CreateButton::new(custom_id).label(label).style(if custom_id == make_custom_id::<Advertising>(action, "").as_str() { ButtonStyle::Success } else { ButtonStyle::Secondary }))
+                    self.value = Some(option.clone());
+                    let mut question_message = on_fail!(component.channel_id.message(http, question_message).await, "Failed to get question message".to_string())?;
+                    let mut components = vec![];
+                    for row in &question_message.components {
+                        let mut new_buttons = vec![];
+                        for component in &row.components {
+                            if let ActionRowComponent::Button(button) = component {
+                                if let ButtonKind::NonLink { custom_id, style: _style } = &button.data {
+                                    let label = assert_some!(button.label.clone(), "this button doesn't have a valid label")?;
+                                    new_buttons.push(CreateButton::new(custom_id).label(label).style(if custom_id == make_custom_id::<Advertising>(action.as_str(), "").as_str() { ButtonStyle::Success } else { ButtonStyle::Secondary }))
+                                }
                             }
                         }
+                        components.push(CreateActionRow::Buttons(new_buttons));
                     }
-                    components.push(CreateActionRow::Buttons(new_buttons));
-                }
 
-                on_fail!(question_message.edit(http, EditMessage::new().components(components)).await,  "Failed to edit question button".to_string())?;
-            }
-            Ok(true)
+                    on_fail!(question_message.edit(http, EditMessage::new().components(components)).await,  "Failed to edit question button".to_string())?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            } else { Ok(false) }
         } else {
             Ok(false)
         }
@@ -104,7 +107,6 @@ impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
 
     pub async fn try_init(&mut self, http: &Http, thread: &GuildChannel, title: impl Display, options: Vec<(impl ToString, T)>) -> Result<(), BidibipError> {
         if self.question_options.is_some() { return Ok(()); }
-
         let mut out_options = HashMap::new();
 
         let mut components = vec![];
@@ -191,13 +193,21 @@ impl TextOption {
         }
     }
 
-    pub async fn reset(&mut self, http: &Http, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
-        if let Some((_, reset_button_id)) = &self.value {
-            if reset_button_id.raw().to_string().as_str() == action {
-                self.delete(http, thread).await?;
-            }
+    pub async fn try_edit(&mut self, http: &Http, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+        if let Some((value, reset_button_id)) = &self.value {
+            if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>() {
+                if reset_button_id.raw().to_string().as_str() == action {
+                    let (_, title) = assert_some!(&self.question_message, "Question message should be none")?;
+                    let button = ButtonId::new()?;
+                    on_fail!(component.create_response(http,
+                        CreateInteractionResponse::Modal(CreateModal::new(button.custom_id::<Advertising>(), title)
+                            .components(vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Paragraph, "Nouveau contenu", "text").placeholder("texte").value(value))]))).await, "Failed to create edit modal")?;
+                    Ok(true)
+                } else { Ok(false) }
+            } else { Ok(false) }
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
     pub fn is_unset(&self) -> bool {

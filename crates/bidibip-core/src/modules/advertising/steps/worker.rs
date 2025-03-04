@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Colour, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Colour, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 enum Location {
@@ -118,10 +118,7 @@ impl SubStep for WorkerInfos {
         Ok(())
     }
 
-    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
-        self.location.try_set(&ctx.http, thread, action).await?;
-        self.skills.reset(&ctx.http, thread, action).await?;
-
-        Ok(())
+    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+        Ok(self.location.try_set(&ctx.http, component).await? || self.skills.try_edit(&ctx.http, component).await?)
     }
 }

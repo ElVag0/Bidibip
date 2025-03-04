@@ -177,16 +177,18 @@ impl BidibipModule for Advertising {
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     }
                 }
-                if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>()
+                if let Some(_) = component.data.get_custom_id_action::<Advertising>()
                 {
                     let mut ad_config = self.ad_config.write().await;
                     if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
 
-                        on_fail!(component.defer(&ctx.http).await, "failed to defer interaction")?;
-
                         let mut items : Vec<&mut dyn SubStep> = vec![in_progress];
+                        let mut clicked = false;
                         while let Some(item) = items.pop() {
-                            item.clicked_button(&ctx, edition_thread, action.as_str()).await?;
+                            if item.clicked_button(&ctx, &component).await? {
+                                clicked = true;
+                                break;
+                            }
                             items.append(&mut item.get_dependencies());
                         }
 

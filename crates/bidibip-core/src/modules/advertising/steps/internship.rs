@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Compensation {
@@ -94,16 +94,14 @@ impl SubStep for InternshipInfos {
         Ok(())
     }
 
-    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
-        self.duration.reset(&ctx.http, thread, action).await?;
-        self.compensation.try_set(&ctx.http, thread, action).await?;
+    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
         if let Some(compensation) = self.compensation.value_mut() {
             if let Compensation::Yes(value) = compensation {
                 if value.is_unset() {
-                    value.reset(&ctx.http, thread, action).await?;
+                    if value.try_edit(&ctx.http, component).await? { return Ok(true); }
                 }
             }
         }
-        Ok(())
+        Ok(self.duration.try_edit(&ctx.http, component).await? || self.compensation.try_set(&ctx.http, component).await?)
     }
 }

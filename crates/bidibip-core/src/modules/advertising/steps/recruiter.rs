@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Colour, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Colour, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Location {
@@ -134,10 +134,6 @@ impl SubStep for RecruiterInfos {
     }
 
     async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
-        self.studio.try_set(&ctx.http, thread, message).await?;
-        self.qualifications.try_set(&ctx.http, thread, message).await?;
-        self.responsibilities.try_set(&ctx.http, thread, message).await?;
-
         if let Some(value) = self.location.value_mut() {
             match value {
                 Location::Remote => {}
@@ -145,14 +141,16 @@ impl SubStep for RecruiterInfos {
                 Location::OnSite(val) => { val.try_set(&ctx.http, thread, message).await?; }
             }
         }
+        self.studio.try_set(&ctx.http, thread, message).await?;
+        self.qualifications.try_set(&ctx.http, thread, message).await?;
+        self.responsibilities.try_set(&ctx.http, thread, message).await?;
         Ok(())
     }
 
-    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
-        self.studio.reset(&ctx.http, thread, action).await?;
-        self.qualifications.reset(&ctx.http, thread, action).await?;
-        self.responsibilities.reset(&ctx.http, thread, action).await?;
-        self.location.try_set(&ctx.http, thread, action).await?;
-        Ok(())
+    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+        Ok(self.studio.try_edit(&ctx.http, component).await? ||
+            self.qualifications.try_edit(&ctx.http, component).await? ||
+            self.responsibilities.try_edit(&ctx.http, component).await? ||
+            self.location.try_set(&ctx.http, component).await?)
     }
 }

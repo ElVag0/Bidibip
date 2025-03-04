@@ -11,7 +11,7 @@ use crate::modules::advertising::steps::worker::WorkerInfos;
 use crate::modules::advertising::steps::workstudy::WorkStudyInfos;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, Colour, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildChannel, Http, Message, MessageId, User};
+use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildChannel, Http, Message, MessageId, User};
 use serenity::builder::CreateButton;
 use crate::on_fail;
 
@@ -175,17 +175,16 @@ impl SubStep for MainSteps {
         self.other_urls.try_set(&ctx.http, thread, message).await?;
         Ok(())
     }
-    async fn clicked_button(&mut self, ctx: &Context, thread: &ChannelId, action: &str) -> Result<(), BidibipError> {
-        self.title.reset(&ctx.http, thread, action).await?;
-        self.description.reset(&ctx.http, thread, action).await?;
+    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
         if let Some(Contact::Other(other)) = self.contact.value_mut() {
-            other.reset(&ctx.http, thread, action).await?;
+            if other.try_edit(&ctx.http, component).await? { return Ok(true); }
         }
-        self.other_urls.reset(&ctx.http, thread, action).await?;
-        self.contact.try_set(&ctx.http, thread, action).await?;
-        self.is_recruiter.try_set(&ctx.http, thread, action).await?;
-        self.kind.try_set(&ctx.http, thread, action).await?;
-        Ok(())
+        Ok(self.description.try_edit(&ctx.http, component).await? ||
+            self.title.try_edit(&ctx.http, component).await? ||
+            self.other_urls.try_edit(&ctx.http, component).await? ||
+            self.contact.try_set(&ctx.http, component).await? ||
+            self.is_recruiter.try_set(&ctx.http, component).await? ||
+            self.kind.try_set(&ctx.http, component).await?)
     }
 
     fn get_dependencies(&mut self) -> Vec<&mut dyn SubStep> {
