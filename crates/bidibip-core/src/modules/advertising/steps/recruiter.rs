@@ -20,11 +20,19 @@ impl ResetStep for Location {
             Location::OnSite(val) => { val.delete(http, thread).await }
         }
     }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            Location::Remote => {}
+            Location::OnSiteFlex(v) => {v.clean_for_storage()}
+            Location::OnSite(v) => {v.clean_for_storage()}
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct RecruiterInfos {
-    location: ButtonOption<Location>,
+    pub location: ButtonOption<Location>,
     studio: TextOption,
     responsibilities: TextOption,
     qualifications: TextOption,
@@ -38,6 +46,13 @@ impl ResetStep for RecruiterInfos {
         self.responsibilities.delete(http, thread).await?;
         self.qualifications.delete(http, thread).await?;
         Ok(())
+    }
+
+    fn clean_for_storage(&mut self) {
+        self.location.clean_for_storage();
+        self.studio.clean_for_storage();
+        self.responsibilities.clean_for_storage();
+        self.qualifications.clean_for_storage();
     }
 }
 

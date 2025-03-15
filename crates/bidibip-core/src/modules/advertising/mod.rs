@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{   ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateThread,  GuildChannel, Http, Interaction, Mentionable, Message, User, UserId};
+use serenity::all::{ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateEmbed, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, ForumTagId, GuildChannel, Http, Interaction, Mentionable, Message, User, UserId};
 use serenity::builder::{CreateActionRow, CreateButton};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
@@ -18,7 +18,7 @@ use crate::{assert_some, on_fail};
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
 use crate::modules::advertising::steps::main::MainSteps;
-use crate::modules::advertising::steps::SubStep;
+use crate::modules::advertising::steps::{ResetStep, SubStep};
 
 pub struct Advertising {
     ad_config: RwLock<AdvertisingConfig>,
@@ -26,13 +26,32 @@ pub struct Advertising {
 
 #[derive(Serialize, Deserialize)]
 pub struct StoredAdData {
-    thread: ChannelId,
     ad_message: MessageReference,
     description: MainSteps,
 }
 
+
+#[derive(Serialize, Deserialize, Default)]
+struct AdvertisingTags {
+    freelance: ForumTagId,
+    volunteer: ForumTagId,
+    paid: ForumTagId,
+    unpaid: ForumTagId,
+    internship: ForumTagId,
+    fixed_term: ForumTagId,
+    open_ended: ForumTagId,
+    work_study: ForumTagId,
+    worker: ForumTagId,
+    recruiter: ForumTagId,
+    remote: ForumTagId,
+    on_site: ForumTagId,
+    on_site_flex: ForumTagId,
+}
+
 #[derive(Serialize, Deserialize)]
 struct AdvertisingConfig {
+    tags: AdvertisingTags,
+    ad_forum: ChannelId,
     in_progress_ad_channel: ChannelId,
     max_ad_per_user: u64,
     stored_adds: HashMap<UserId, HashMap<ChannelId, StoredAdData>>,
@@ -42,6 +61,8 @@ struct AdvertisingConfig {
 impl Default for AdvertisingConfig {
     fn default() -> Self {
         Self {
+            tags: Default::default(),
+            ad_forum: Default::default(),
             in_progress_ad_channel: Default::default(),
             max_ad_per_user: 2,
             stored_adds: Default::default(),
@@ -75,6 +96,18 @@ impl Advertising {
         };
         Ok(())
     }
+
+    async fn init_channel_with_data(&self, ctx: &Context, config: &mut AdvertisingConfig, user: &User, mut data: MainSteps) -> Result<(), BidibipError> {
+        let new_channel = on_fail!(config.in_progress_ad_channel.create_thread( & ctx.http, CreateThread::new(format ! ("Annonce de {}", Username::from_user(&user).safe_full())).kind(ChannelType::PrivateThread)).await, "Failed to create thread")?;
+        on_fail!(new_channel.id.add_thread_member( & ctx.http, user.id).await, "Failed to add member to thread")?;
+        // Can fail if sending /annonce in announcement channel (the channel will be deleted)
+        #[allow(unused)]
+        command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true)
+            .content(format!("Bien reçu, la suite se passe ici :arrow_right: {}{}", new_channel.mention(), if removed_old { "\n> Note : ta précédente annonce en cours de création a été supprimée" } else { "" })))).await;
+        self.start_procedure(&ctx, new_channel, &user, &mut data).await?;
+
+        Ok(())
+    }
 }
 
 #[serenity::async_trait]
@@ -84,21 +117,21 @@ impl BidibipModule for Advertising {
             "annonce" => {
                 let removed_old = self.remove_in_progress_ad(&ctx.http, command.user.id).await?;
                 let mut ad_config = self.ad_config.write().await;
-
-                let new_channel = on_fail!(ad_config.in_progress_ad_channel.create_thread( &ctx.http, CreateThread::new(format !("Annonce de {}", Username::from_user( & command.user).safe_full())).kind(ChannelType::PrivateThread)).await, "Failed to create thread")?;
-                let new_channel_id = new_channel.id;
-                let mut in_progress_data = MainSteps::default();
-
-                on_fail!(new_channel.id.add_thread_member(&ctx.http, command.user.id).await, "Failed to add member to thread")?;
-
-                // Can fail if sending /annonce in announcement channel (the channel will be deleted)
-                #[allow(unused)]
-                command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true)
-                    .content(format!("Bien reçu, la suite se passe ici :arrow_right: {}{}", new_channel.mention(), if removed_old { "\n> Note : ta précédente annonce en cours de création a été supprimée" } else { "" })))).await;
-
                 if let Some(stored_add) = ad_config.stored_adds.get(&command.user.id) {
                     if stored_add.len() > 0 {
-                        on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new().content("Tu as déjà des annonces ouvertes")).await, "failed to send existing message 1")?;
+                        if stored_add.len() as u64 >= ad_config.max_ad_per_user {
+                            on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .content("# :warning: Tu as déjà des annonces ouvertes !\n> Note : Tu as atteint le nombre maximal d'annonces simultanées")
+                            .ephemeral(true))).await, "Failed to send interaction response")?;
+                        } else {
+                            on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .content("# :warning: Tu as déjà des annonces ouvertes !")
+                                .ephemeral(true)
+                                .components(vec![CreateActionRow::Buttons(vec![
+                                        CreateButton::new(make_custom_id::<Advertising>("create-ad", "")).label("Créer une nouvelle annonce")
+                                    ])]))).await, "Failed to send interaction response")?;
+                        }
+
 
                         for (channel, data) in stored_add {
                             let title = match &data.description.title.value() {
@@ -106,31 +139,17 @@ impl BidibipModule for Advertising {
                                 Some(title) => { title.as_str() }
                             };
 
-                            on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new()
-                                .content(format!("**{}** : {}", title, data.ad_message.link(Config::get().server_id)))
+                            on_fail!(command.create_followup(&ctx.http, CreateInteractionResponseFollowup::new().content(format!("**{}** : {}", title, data.ad_message.link(Config::get().server_id)))
+                                .ephemeral(true)
                             .components(vec![CreateActionRow::Buttons(vec![
                                         CreateButton::new(make_custom_id::<Advertising>("edit-ad", channel)).label("Modifier"),
                                         CreateButton::new(make_custom_id::<Advertising>("delete-ad", channel)).label("Supprimer")
-                                    ])])).await, "failed to send existing message 1")?;
+                                    ])])).await, "Failed to send interaction response")?;
                         }
-                        if stored_add.len() as u64 >= ad_config.max_ad_per_user {
-                            on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new().content(":warning: Tu as atteint le nombre maximal d'annonces simultanées")).await, "failed to send existing message 1")?;
-                        } else {
-                            on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new().content("# Crée une nouvelle annonce")
-                                .components(vec![CreateActionRow::Buttons(vec![
-                                        CreateButton::new(make_custom_id::<Advertising>("create-ad", new_channel.id)).label("Nouvelle annonce")
-                                    ])])).await, "failed to send existing message 1")?;
-                        }
-                    } else {
-                        self.start_procedure(&ctx, new_channel, &command.user, &mut in_progress_data).await?;
                     }
                 } else {
-                    self.start_procedure(&ctx, new_channel, &command.user, &mut in_progress_data).await?;
+                    self.init_channel_with_data(&ctx, &mut ad_config, &command.user, MainSteps::default()).await?;
                 }
-
-                ad_config.in_progress_ad.insert(command.user.id, (new_channel_id, in_progress_data));
-
-                on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "failed to save config")?;
             }
             _ => {}
         }
@@ -147,7 +166,7 @@ impl BidibipModule for Advertising {
             // Wrong channel
             if *edition_thread != message.channel_id { return Ok(()); }
 
-            let mut items : Vec<&mut dyn SubStep> = vec![ad_config];
+            let mut items: Vec<&mut dyn SubStep> = vec![ad_config];
             while let Some(item) = items.pop() {
                 item.receive_message(&ctx, edition_thread, &message).await?;
                 items.append(&mut item.get_dependencies());
@@ -166,27 +185,56 @@ impl BidibipModule for Advertising {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) -> Result<(), BidibipError> {
         if let Interaction::Component(component) = interaction {
             if let ComponentInteractionDataKind::Button = component.data.kind {
+
+                // Create new ad
                 if component.data.get_custom_id_data::<Advertising>("create-ad").is_some() {
                     let mut ad_config = self.ad_config.write().await;
-                    if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
+                    self.init_channel_with_data(&ctx, &mut ad_config, &component.user, MainSteps::default()).await?;
+                }
+
+                // Edit existing ad
+                if let Some(id) = component.data.get_custom_id_data::<Advertising>("edit-ad") {
+                    let mut ad_config = self.ad_config.write().await;
+                    self.init_channel_with_data(&ctx, &mut ad_config, &component.user, MainSteps::default()).await?;
+                }
+
+                // Publish button
+                if component.data.get_custom_id_data::<Advertising>("publish").is_some() {
+                    let mut ad_config = self.ad_config.write().await;
+
+                    let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
                         if *edition_thread != component.channel_id {
                             return Ok(());
                         }
-                        let channel = assert_some!(on_fail!(component.channel_id.to_channel(&ctx.http).await, "failed to get channel")?.guild(), "Failed to get guild_channel")?;
-                        self.start_procedure(&ctx, channel, &component.user, in_progress).await?;
-                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
-                    }
+                        in_progress.clone()
+                    } else {
+                        return Ok(())
+                    };
+
+                    data.clean_for_storage();
+                    let message = data.create_message(&component.user);
+
+                    let title = assert_some!(data.title.value(), "Invalid title")?;
+
+                    let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
+
+                    ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
+                        ad_message: MessageReference::default(),
+                        description: data,
+                    });
+                    ad_config.in_progress_ad.remove(&component.user.id);
+                    on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
+
+                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                 }
+
                 if let Some(_) = component.data.get_custom_id_action::<Advertising>()
                 {
                     let mut ad_config = self.ad_config.write().await;
                     if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
-
-                        let mut items : Vec<&mut dyn SubStep> = vec![in_progress];
-                        let mut clicked = false;
+                        let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
                         while let Some(item) = items.pop() {
                             if item.clicked_button(&ctx, &component).await? {
-                                clicked = true;
                                 break;
                             }
                             items.append(&mut item.get_dependencies());

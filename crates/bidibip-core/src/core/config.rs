@@ -31,8 +31,14 @@ struct ButtonIds {
     free: Vec<u64>,
 }
 
+fn is_id_zero(v: &u64) -> bool {
+    *v == 0
+}
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct ButtonId {
+    #[serde(skip_serializing_if = "is_id_zero")]
+    #[serde(default)]
     id: u64,
 }
 

@@ -15,6 +15,10 @@ impl ResetStep for OpenEndedInfos {
         self.compensation.delete(http, thread).await?;
         Ok(())
     }
+
+    fn clean_for_storage(&mut self) {
+        self.compensation.clean_for_storage()
+    }
 }
 
 #[serenity::async_trait]

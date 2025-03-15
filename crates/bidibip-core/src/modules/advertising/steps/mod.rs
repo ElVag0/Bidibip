@@ -8,7 +8,7 @@ mod worker;
 mod volunteering;
 mod freelance;
 mod open_ended;
-mod workstudy;
+mod work_study;
 mod fixed_term;
 
 #[serenity::async_trait]
@@ -28,4 +28,6 @@ pub trait ResetStep {
     // Used to remove old messages
     #[allow(unused)]
     async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> { Ok(()) }
+
+    fn clean_for_storage(&mut self);
 }

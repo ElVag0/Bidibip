@@ -10,12 +10,33 @@ use crate::modules::advertising::Advertising;
 use crate::{assert_some, on_fail};
 use crate::modules::advertising::steps::ResetStep;
 
+fn default_none_value<T: Clone + ResetStep>() -> Option<T> {
+    None
+}
+
+fn default_none_question<T: Clone + ResetStep>() -> Option<(MessageId, HashMap<u64, T>)> {
+    None
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ButtonOption<T: Clone + ResetStep> {
     // Value / edit button
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_none_value")]
     value: Option<T>,
     // ButtonId, Value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_none_question")]
     question_options: Option<(MessageId, HashMap<u64, T>)>,
+}
+
+impl<T: Clone + ResetStep> Default for ButtonOption<T> {
+    fn default() -> Self {
+        Self {
+            value: None,
+            question_options: None,
+        }
+    }
 }
 
 #[serenity::async_trait]
@@ -35,17 +56,14 @@ impl<T: Clone + ResetStep + Send + Sync> ResetStep for ButtonOption<T> {
         self.question_options = None;
         Ok(())
     }
-}
 
-impl<T: Clone + ResetStep> Default for ButtonOption<T> {
-    fn default() -> Self {
-        Self {
-            value: None,
-            question_options: None,
+    fn clean_for_storage(&mut self) {
+        if let Some(value) = &mut self.value {
+            value.clean_for_storage();
         }
+        self.question_options = None;
     }
 }
-
 
 impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
     // Return true if value was modified. To be modified you should have called init() before
@@ -90,6 +108,10 @@ impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
         } else {
             Ok(false)
         }
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.value.is_none() && self.question_options.is_none()
     }
 
     pub fn is_unset(&self) -> bool {
@@ -142,8 +164,12 @@ impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct TextOption {
     // Value / edit button id
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     value: Option<(String, ButtonId)>,
     // Question message / title
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     question_message: Option<(MessageId, String)>,
 }
 
@@ -162,9 +188,21 @@ impl ResetStep for TextOption {
         self.question_message = None;
         Ok(())
     }
+
+    fn clean_for_storage(&mut self) {
+        if let Some(val) = &mut self.value {
+            val.1 = ButtonId::default();
+        }
+        self.question_message = None;
+    }
 }
 
 impl TextOption {
+
+    pub fn is_none(&self) -> bool {
+        self.value.is_none() && self.question_message.is_none()
+    }
+
     // Return true if value was modified. To be modified you should have called init() before
     pub async fn try_set(&mut self, http: &Http, channel: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
         if let Some((question_message, question)) = &self.question_message {

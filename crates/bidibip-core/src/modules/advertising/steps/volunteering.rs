@@ -8,7 +8,9 @@ pub struct VolunteeringInfos {
 }
 
 #[serenity::async_trait]
-impl ResetStep for VolunteeringInfos {}
+impl ResetStep for VolunteeringInfos {
+    fn clean_for_storage(&mut self) {}
+}
 
 #[serenity::async_trait]
 impl SubStep for VolunteeringInfos {

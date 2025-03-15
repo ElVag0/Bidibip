@@ -17,6 +17,11 @@ impl ResetStep for WorkStudyInfos {
         self.compensation.delete(http, thread).await?;
         Ok(())
     }
+
+    fn clean_for_storage(&mut self) {
+        self.duration.clean_for_storage();
+        self.compensation.clean_for_storage()
+    }
 }
 
 #[serenity::async_trait]

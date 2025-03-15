@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Colour, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
-enum Location {
+pub enum Location {
     Remote,
     Anywhere(TextOption),
     OnSite(TextOption),
@@ -19,11 +19,19 @@ impl ResetStep for Location {
             Location::OnSite(obj) => { obj.delete(http, thread).await }
         }
     }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            Location::Remote => {}
+            Location::Anywhere(v) => {v.clean_for_storage()}
+            Location::OnSite(v) => {v.clean_for_storage()}
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct WorkerInfos {
-    location: ButtonOption<Location>,
+    pub location: ButtonOption<Location>,
     skills: TextOption,
 }
 
@@ -33,6 +41,11 @@ impl ResetStep for WorkerInfos {
         self.location.delete(http, thread).await?;
         self.skills.delete(http, thread).await?;
         Ok(())
+    }
+
+    fn clean_for_storage(&mut self) {
+        self.location.clean_for_storage();
+        self.skills.clean_for_storage();
     }
 }
 

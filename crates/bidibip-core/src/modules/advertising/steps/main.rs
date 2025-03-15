@@ -3,16 +3,18 @@ use crate::core::utilities::Username;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::fixed_term::FixedTermInfos;
 use crate::modules::advertising::steps::freelance::FreelanceInfos;
-use crate::modules::advertising::steps::internship::InternshipInfos;
+use crate::modules::advertising::steps::internship::{Compensation, InternshipInfos};
 use crate::modules::advertising::steps::open_ended::OpenEndedInfos;
 use crate::modules::advertising::steps::recruiter::RecruiterInfos;
 use crate::modules::advertising::steps::volunteering::VolunteeringInfos;
 use crate::modules::advertising::steps::worker::WorkerInfos;
-use crate::modules::advertising::steps::workstudy::WorkStudyInfos;
+use crate::modules::advertising::steps::work_study::WorkStudyInfos;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildChannel, Http, Message, MessageId, User};
+use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Message, MessageId, User};
 use serenity::builder::CreateButton;
+use crate::core::interaction_utils::make_custom_id;
+use crate::modules::advertising::{Advertising, AdvertisingTags};
 use crate::on_fail;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -36,6 +38,17 @@ impl ResetStep for Contract {
             Contract::OpenEnded(obj) => { obj.delete(http, thread).await }
         }
     }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            Contract::Volunteering(v) => { v.clean_for_storage() }
+            Contract::Internship(v) => { v.clean_for_storage() }
+            Contract::Freelance(v) => { v.clean_for_storage() }
+            Contract::WorkStudy(v) => { v.clean_for_storage() }
+            Contract::FixedTerm(v) => { v.clean_for_storage() }
+            Contract::OpenEnded(v) => { v.clean_for_storage() }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -49,6 +62,13 @@ impl ResetStep for What {
         match self {
             What::Recruiter(obj) => { obj.delete(http, thread).await }
             What::Worker(obj) => { obj.delete(http, thread).await }
+        }
+    }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            What::Recruiter(v) => { v.clean_for_storage() }
+            What::Worker(v) => { v.clean_for_storage() }
         }
     }
 }
@@ -65,16 +85,37 @@ impl ResetStep for Contact {
             Contact::Other(obj) => { obj.delete(http, thread).await }
         }
     }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            Contact::Discord => {}
+            Contact::Other(v) => { v.clean_for_storage() }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct MainSteps {
+    #[serde(skip_serializing_if = "TextOption::is_none")]
+    #[serde(default)]
     pub title: TextOption,
+    #[serde(skip_serializing_if = "ButtonOption::is_none")]
+    #[serde(default)]
     pub kind: ButtonOption<Contract>,
+    #[serde(skip_serializing_if = "TextOption::is_none")]
+    #[serde(default)]
     pub description: TextOption,
+    #[serde(skip_serializing_if = "ButtonOption::is_none")]
+    #[serde(default)]
     pub is_recruiter: ButtonOption<What>,
+    #[serde(skip_serializing_if = "ButtonOption::is_none")]
+    #[serde(default)]
     pub contact: ButtonOption<Contact>,
+    #[serde(skip_serializing_if = "TextOption::is_none")]
+    #[serde(default)]
     pub other_urls: TextOption,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     demo_message: Option<MessageId>,
 }
 
@@ -88,6 +129,16 @@ impl ResetStep for MainSteps {
         self.contact.delete(http, thread).await?;
         self.other_urls.delete(http, thread).await?;
         Ok(())
+    }
+
+    fn clean_for_storage(&mut self) {
+        self.title.clean_for_storage();
+        self.kind.clean_for_storage();
+        self.description.clean_for_storage();
+        self.is_recruiter.clean_for_storage();
+        self.contact.clean_for_storage();
+        self.other_urls.clean_for_storage();
+        self.demo_message = None;
     }
 }
 
@@ -320,8 +371,78 @@ impl MainSteps {
         message
     }
 
+
+    pub fn get_tags(&self, config: &AdvertisingTags) -> Vec<ForumTagId> {
+        let mut tags = vec![];
+        if let Some(What::Recruiter(val)) = self.is_recruiter.value() {
+            tags.push(config.recruiter);
+            if let Some(val) = val.location.value() {
+                match val {
+                    crate::modules::advertising::steps::recruiter::Location::Remote => {
+                        tags.push(config.remote);
+                    }
+                    crate::modules::advertising::steps::recruiter::Location::OnSiteFlex(_) => {
+                        tags.push(config.on_site_flex);
+                    }
+                    crate::modules::advertising::steps::recruiter::Location::OnSite(_) => {
+                        tags.push(config.on_site);
+                    }
+                }
+            }
+        }
+        if let Some(What::Worker(val)) = self.is_recruiter.value() {
+            tags.push(config.worker);
+            if let Some(val) = val.location.value() {
+                match val {
+                    crate::modules::advertising::steps::worker::Location::Remote => {
+                        tags.push(config.remote);
+                    }
+                    crate::modules::advertising::steps::worker::Location::Anywhere(_) => {
+                        tags.push(config.on_site_flex);
+                    }
+                    crate::modules::advertising::steps::worker::Location::OnSite(_) => {
+                        tags.push(config.on_site);
+                    }
+                }
+            }
+        }
+        if let Some(val) = self.kind.value() {
+            match val {
+                Contract::Volunteering(_) => {
+                    tags.push(config.volunteer);
+                    tags.push(config.unpaid);
+                }
+                Contract::Internship(val) => {
+                    tags.push(config.internship);
+                    if let Some(Compensation::Yes(_)) = val.compensation.value() {
+                        tags.push(config.paid);
+                    } else {
+                        tags.push(config.unpaid);
+                    }
+                }
+                Contract::Freelance(_) => {
+                    tags.push(config.freelance);
+                    tags.push(config.paid);
+                }
+                Contract::WorkStudy(_) => {
+                    tags.push(config.work_study);
+                    tags.push(config.paid);
+                }
+                Contract::FixedTerm(_) => {
+                    tags.push(config.fixed_term);
+                    tags.push(config.paid);
+                }
+                Contract::OpenEnded(_) => {
+                    tags.push(config.open_ended);
+                    tags.push(config.paid);
+                }
+            }
+        }
+        tags
+    }
+
     pub async fn send_test_message_to_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
-        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![CreateButton::new("publish").label("Publier").style(ButtonStyle::Success)])]);
+        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("publish", "")).label("Publier").style(ButtonStyle::Success)])]);
 
         if let Some(old_message) = self.demo_message {
             #[allow(unused)]

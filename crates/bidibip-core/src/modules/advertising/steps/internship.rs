@@ -17,6 +17,13 @@ impl ResetStep for Compensation {
             Compensation::Yes(obj) => { obj.delete(http, thread).await }
         }
     }
+
+    fn clean_for_storage(&mut self) {
+        match self {
+            Compensation::No => {}
+            Compensation::Yes(v) => {v.clean_for_storage()}
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -31,6 +38,11 @@ impl ResetStep for InternshipInfos {
         self.duration.delete(http, thread).await?;
         self.compensation.delete(http, thread).await?;
         Ok(())
+    }
+
+    fn clean_for_storage(&mut self) {
+        self.duration.clean_for_storage();
+        self.compensation.clean_for_storage()
     }
 }
 
