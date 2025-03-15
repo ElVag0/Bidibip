@@ -2,6 +2,7 @@ mod ad_utils;
 mod steps;
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
@@ -72,14 +73,7 @@ impl Default for AdvertisingConfig {
 }
 
 impl Advertising {
-    async fn start_procedure(&self, ctx: &Context, thread: GuildChannel, user: &User, config: &mut MainSteps) -> Result<(), BidibipError> {
-        on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content(format!("# Bienvenue dans le formulaire de création d'annonce {} !", user.name))).await, "Failed to send welcome message")?;
-        self.advance_or_print(config, ctx, &thread, user).await?;
-        Ok(())
-    }
-
-    async fn remove_in_progress_ad(&self, http: &Http, user: UserId) -> Result<bool, BidibipError> {
-        let mut config = self.ad_config.write().await;
+    async fn remove_in_progress_ad(&self, http: &Http, config: &mut AdvertisingConfig, user: UserId) -> Result<bool, BidibipError> {
         if let Some((edition_thread, _)) = config.in_progress_ad.get(&user) {
             #[allow(unused)]
             edition_thread.delete(http).await;
@@ -97,16 +91,19 @@ impl Advertising {
         Ok(())
     }
 
-    async fn init_channel_with_data(&self, ctx: &Context, config: &mut AdvertisingConfig, user: &User, mut data: MainSteps) -> Result<(), BidibipError> {
+    async fn init_channel_with_data(&self, ctx: &Context, config: &mut AdvertisingConfig, user: &User, mut data: MainSteps) -> Result<CreateInteractionResponse, BidibipError> {
+        let removed_old = self.remove_in_progress_ad(&ctx.http, config, user.id).await?;
         let new_channel = on_fail!(config.in_progress_ad_channel.create_thread( & ctx.http, CreateThread::new(format ! ("Annonce de {}", Username::from_user(&user).safe_full())).kind(ChannelType::PrivateThread)).await, "Failed to create thread")?;
         on_fail!(new_channel.id.add_thread_member( & ctx.http, user.id).await, "Failed to add member to thread")?;
-        // Can fail if sending /annonce in announcement channel (the channel will be deleted)
-        #[allow(unused)]
-        command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true)
-            .content(format!("Bien reçu, la suite se passe ici :arrow_right: {}{}", new_channel.mention(), if removed_old { "\n> Note : ta précédente annonce en cours de création a été supprimée" } else { "" })))).await;
-        self.start_procedure(&ctx, new_channel, &user, &mut data).await?;
 
-        Ok(())
+        config.in_progress_ad.insert(user.id, (new_channel.id, data));
+
+        on_fail!(new_channel.send_message(&ctx.http, CreateMessage::new().content(format!("# Bienvenue dans le formulaire de création d'annonce {} !", user.name))).await, "Failed to send welcome message")?;
+        self.advance_or_print(&mut config.in_progress_ad.get_mut(&user.id).unwrap().1, ctx, &new_channel, user).await?;
+
+        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&config), "failed to save config")?;
+        Ok(CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true)
+            .content(format!("Bien reçu, la suite se passe ici :arrow_right: {}{}", new_channel.mention(), if removed_old { "\n> Note : ta précédente annonce en cours de création a été supprimée" } else { "" }))))
     }
 }
 
@@ -115,7 +112,6 @@ impl BidibipModule for Advertising {
     async fn execute_command(&self, ctx: Context, name: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         match name {
             "annonce" => {
-                let removed_old = self.remove_in_progress_ad(&ctx.http, command.user.id).await?;
                 let mut ad_config = self.ad_config.write().await;
                 if let Some(stored_add) = ad_config.stored_adds.get(&command.user.id) {
                     if stored_add.len() > 0 {
@@ -146,10 +142,12 @@ impl BidibipModule for Advertising {
                                         CreateButton::new(make_custom_id::<Advertising>("delete-ad", channel)).label("Supprimer")
                                     ])])).await, "Failed to send interaction response")?;
                         }
+
+                        return Ok(());
                     }
-                } else {
-                    self.init_channel_with_data(&ctx, &mut ad_config, &command.user, MainSteps::default()).await?;
                 }
+                #[allow(unused)]
+                command.create_response(&ctx.http, on_fail!(self.init_channel_with_data(&ctx, &mut ad_config, &command.user, MainSteps::default()).await, "Failed to create form channel")?).await;
             }
             _ => {}
         }
@@ -189,13 +187,50 @@ impl BidibipModule for Advertising {
                 // Create new ad
                 if component.data.get_custom_id_data::<Advertising>("create-ad").is_some() {
                     let mut ad_config = self.ad_config.write().await;
-                    self.init_channel_with_data(&ctx, &mut ad_config, &component.user, MainSteps::default()).await?;
+                    #[allow(unused)]
+                    component.create_response(&ctx.http, self.init_channel_with_data(&ctx, &mut ad_config, &component.user, MainSteps::default()).await?).await;
                 }
 
                 // Edit existing ad
                 if let Some(id) = component.data.get_custom_id_data::<Advertising>("edit-ad") {
                     let mut ad_config = self.ad_config.write().await;
-                    self.init_channel_with_data(&ctx, &mut ad_config, &component.user, MainSteps::default()).await?;
+
+                    if let Some(user_data) = ad_config.stored_adds.get_mut(&component.user.id) {
+                        let channel = ChannelId::from(u64::from_str(id.as_str())?);
+
+                        if let Some(existing_data) = user_data.get(&channel) {
+
+                            let mut data = existing_data.description.clone();
+                            data.edited_post = Some((component.user.id.clone(), channel.clone()));
+
+                            #[allow(unused)]
+                            component.create_response(&ctx.http, self.init_channel_with_data(&ctx, &mut ad_config, &component.user, data).await?).await;
+                        }
+                    }
+                }
+
+                // Delete existing ad
+                if let Some(id) = component.data.get_custom_id_data::<Advertising>("delete-ad") {
+                    let mut ad_config = self.ad_config.write().await;
+                    let is_empty = if let Some(user_data) = ad_config.stored_adds.get_mut(&component.user.id) {
+                        let channel = ChannelId::from(u64::from_str(id.as_str())?);
+
+                        if user_data.contains_key(&channel) {
+                            user_data.remove(&channel);
+                            on_fail!(channel.delete(&ctx.http).await, "Failed to delete old ad channel")?;
+
+                            #[allow(unused)]
+                            component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .ephemeral(true)
+                                .content("Ton annonce a bien été supprimée !"))).await;
+                        }
+
+                        user_data.is_empty()
+                    } else { false };
+                    if is_empty {
+                        ad_config.stored_adds.remove(&component.user.id);
+                    }
+                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                 }
 
                 // Publish button
@@ -210,22 +245,26 @@ impl BidibipModule for Advertising {
                     } else {
                         return Ok(())
                     };
-
                     data.clean_for_storage();
-                    let message = data.create_message(&component.user);
 
-                    let title = assert_some!(data.title.value(), "Invalid title")?;
+                    if let Some((user, edited_post)) = &data.edited_post {
+                        todo!()
+                    } else {
+                        let message = data.create_message(&component.user);
 
-                    let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
+                        let title = assert_some!(data.title.value(), "Invalid title")?;
 
-                    ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
-                        ad_message: MessageReference::default(),
-                        description: data,
-                    });
-                    ad_config.in_progress_ad.remove(&component.user.id);
-                    on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
+                        let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
 
-                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                        ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
+                            ad_message: MessageReference::default(),
+                            description: data,
+                        });
+                        ad_config.in_progress_ad.remove(&component.user.id);
+                        on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
+
+                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                    }
                 }
 
                 if let Some(_) = component.data.get_custom_id_action::<Advertising>()

@@ -404,19 +404,19 @@ impl BidibipModule for Repost {
 
     async fn thread_create(&self, ctx: Context, thread: GuildChannel) -> Result<(), BidibipError> {
         if thread.kind == ChannelType::PublicThread {
-            if let Some(parent) = thread.parent_id {
-                sleep(Duration::from_secs(1)).await;
+            if let Some(potential_forum) = thread.parent_id {
+                //sleep(Duration::from_secs(1)).await;
 
                 let mut config = self.repost_config.write().await;
                 if config.votes.contains_key(&thread.id) {
                     return Ok(());
                 }
 
-                let repost_config = assert_some!(config.forums.get(&parent), "Failed to get repost config")?.clone();
+                let repost_config = if let Some(config) = config.forums.get(&potential_forum) { config.clone() } else { return Ok(()); };
                 let messages = on_fail!(thread.messages(&ctx.http, GetMessages::new().limit(1)).await,"Failed to get first messages in thread")?;
                 let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
                 let thread_owner = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
-                let forum_name = on_fail!(parent.name(&ctx.http).await, "Failed to get forum name")?;
+                let forum_name = on_fail!(potential_forum.name(&ctx.http).await, "Failed to get forum name")?;
 
                 if repost_config.vote_enabled {
                     let vote_message = on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content("Vote en réagissant au post !")).await, "Failed to send vote message")?;
@@ -475,7 +475,7 @@ impl LoadModule<Repost> for Repost {
     }
 
     async fn load(_: &Arc<BidibipSharedData>) -> Result<Repost, Error> {
-        let welcome_config =Config::get().load_module_config::<Repost, RepostConfig>()?;
+        let welcome_config = Config::get().load_module_config::<Repost, RepostConfig>()?;
         Ok(Repost { repost_config: RwLock::new(welcome_config) })
     }
 }
