@@ -85,11 +85,12 @@ impl SubStep for WorkerInfos {
 
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.location.is_unset() {
-            self.location.try_init(&ctx.http, thread, "Souhaites-tu travailler à distance ou en présentiel ?", vec![
+            if self.location.try_init(&ctx.http, thread, "Souhaites-tu travailler à distance ou en présentiel ?", vec![
                 ("🌍 Distanciel", Location::Remote),
                 ("🤷‍♀️ Télétravail possible", Location::Anywhere(TextOption::default())),
-                ("🏣 Présentiel uniquement", Location::OnSite(TextOption::default()))]).await?;
-            return Ok(false);
+                ("🏣 Présentiel uniquement", Location::OnSite(TextOption::default()))]).await? {
+                return Ok(false);
+            }
         }
 
         if let Some(location) = self.location.value_mut() {
@@ -97,22 +98,25 @@ impl SubStep for WorkerInfos {
                 Location::Remote => {}
                 Location::Anywhere(loc) => {
                     if loc.is_unset() {
-                        loc.try_init(&ctx.http, thread, "Indique ta ville / région").await?;
-                        return Ok(false);
+                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région").await? {
+                            return Ok(false);
+                        }
                     }
                 }
                 Location::OnSite(loc) => {
                     if loc.is_unset() {
-                        loc.try_init(&ctx.http, thread, "Indique ta ville / région").await?;
-                        return Ok(false);
+                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région").await? {
+                            return Ok(false);
+                        }
                     }
                 }
             }
         }
 
         if self.skills.is_unset() {
-            self.skills.try_init(&ctx.http, thread, "Quelles sont tes compétences ?").await?;
-            return Ok(false);
+            if self.skills.try_init(&ctx.http, thread, "Quelles sont tes compétences ?").await? {
+                return Ok(false);
+            }
         }
 
         Ok(true)

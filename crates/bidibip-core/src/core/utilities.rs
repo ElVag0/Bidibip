@@ -139,6 +139,15 @@ macro_rules! on_fail {
 }
 
 #[macro_export]
+macro_rules! on_fail_warn {
+    ($a:expr, $msg:expr) => {{
+        if let Err(err) = $a {
+            tracing::warn!("{} : {}", $msg, err);
+        }
+    }};
+}
+
+#[macro_export]
 macro_rules! assert_condition {
     ($a:expr, $msg:expr) => {{
         if $a {
@@ -162,6 +171,15 @@ macro_rules! assert_some {
                 tracing::error!("{}", $msg);
                 Err(anyhow::Error::msg($msg))
             }
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! assert_warn_some {
+    ($a:expr, $msg:expr) => {{
+        if $a.is_none() {
+            tracing::warn!("Unexpected none value : {}", $msg);
         }
     }};
 }

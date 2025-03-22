@@ -52,7 +52,11 @@ impl BidibipModule for Log {
                         _ => { options += format!("{} = ?, ", option.name).as_str() }
                     }
                 }
-                info!("User {} sent command {} with options {}", Username::from_user(&command_interaction.user).safe_full(), command_interaction.data.name, options)
+                if options.is_empty() {
+                    info!("User {} sent command {}", Username::from_user(&command_interaction.user).safe_full(), command_interaction.data.name)
+                } else {
+                    info!("User {} sent command {} with options {}", Username::from_user(&command_interaction.user).safe_full(), command_interaction.data.name, options)
+                }
             }
             Interaction::Component(component_interaction) => {
                 if let ComponentInteractionDataKind::Button = component_interaction.data.kind {

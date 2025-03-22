@@ -104,12 +104,13 @@ impl SubStep for RecruiterInfos {
     }
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.location.is_unset() {
-            self.location.try_init(&ctx.http, thread, "Quelles sont les modalités de travail ?", vec![
+            if self.location.try_init(&ctx.http, thread, "Quelles sont les modalités de travail ?", vec![
                 ("🌍 Distanciel", Location::Remote),
                 ("🤷‍♀️ Télétravail possible", Location::OnSiteFlex(TextOption::default())),
                 ("🏣 Présentiel uniquement", Location::OnSite(TextOption::default())),
-            ]).await?;
-            return Ok(false);
+            ]).await? {
+                return Ok(false);
+            }
         }
 
         if let Some(value) = self.location.value_mut() {
@@ -117,32 +118,37 @@ impl SubStep for RecruiterInfos {
                 Location::Remote => {}
                 Location::OnSiteFlex(val) => {
                     if val.is_unset() {
-                        val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await?;
-                        return Ok(false);
+                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await? {
+                            return Ok(false);
+                        }
                     }
                 }
                 Location::OnSite(val) => {
                     if val.is_unset() {
-                        val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await?;
-                        return Ok(false);
+                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await? {
+                            return Ok(false);
+                        }
                     }
                 }
             }
         }
 
         if self.studio.is_unset() {
-            self.studio.try_init(&ctx.http, thread, "Quel est le nom de ton entreprise / studio ?").await?;
-            return Ok(false);
+            if self.studio.try_init(&ctx.http, thread, "Quel est le nom de ton entreprise / studio ?").await? {
+                return Ok(false);
+            }
         }
 
         if self.responsibilities.is_unset() {
-            self.responsibilities.try_init(&ctx.http, thread, "Quelles sont les responsabilitées demandées ?").await?;
-            return Ok(false);
+            if self.responsibilities.try_init(&ctx.http, thread, "Quelles sont les responsabilitées demandées ?").await? {
+                return Ok(false);
+            }
         }
 
         if self.qualifications.is_unset() {
-            self.qualifications.try_init(&ctx.http, thread, "Quelles sont les compétences requises ?").await?;
-            return Ok(false);
+            if self.qualifications.try_init(&ctx.http, thread, "Quelles sont les compétences requises ?").await? {
+                return Ok(false);
+            }
         }
 
         Ok(true)

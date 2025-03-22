@@ -71,22 +71,25 @@ impl SubStep for InternshipInfos {
 
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.duration.is_unset() {
-            self.duration.try_init(&ctx.http, thread, "Durée du stage").await?;
-            return Ok(false);
+            if self.duration.try_init(&ctx.http, thread, "Durée du stage").await? {
+                return Ok(false);
+            }
         }
 
         if self.compensation.is_unset() {
-            self.compensation.try_init(&ctx.http, thread, "Le stage est-il rémunéré ?", vec![
+            if self.compensation.try_init(&ctx.http, thread, "Le stage est-il rémunéré ?", vec![
                 ("Oui", Compensation::Yes(TextOption::default())),
                 ("No", Compensation::No),
-            ]).await?;
-            return Ok(false);
+            ]).await? {
+                return Ok(false);
+            }
         }
         if let Some(compensation) = self.compensation.value_mut() {
             if let Compensation::Yes(value) = compensation {
                 if value.is_unset() {
-                    value.try_init(&ctx.http, thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)").await?;
-                    return Ok(false);
+                    if value.try_init(&ctx.http, thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)").await? {
+                        return Ok(false);
+                    }
                 }
             }
         }

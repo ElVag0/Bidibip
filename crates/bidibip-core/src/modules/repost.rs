@@ -412,7 +412,11 @@ impl BidibipModule for Repost {
                     return Ok(());
                 }
 
-                let repost_config = assert_some!(config.forums.get(&parent), "Failed to get repost config")?.clone();
+                let repost_config = match config.forums.get(&parent) {
+                    None => {return Ok(())}
+                    Some(config) => {config.clone()}
+                };
+
                 let messages = on_fail!(thread.messages(&ctx.http, GetMessages::new().limit(1)).await,"Failed to get first messages in thread")?;
                 let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
                 let thread_owner = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;

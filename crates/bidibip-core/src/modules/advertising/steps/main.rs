@@ -146,25 +146,28 @@ impl ResetStep for MainSteps {
 impl SubStep for MainSteps {
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.title.is_unset() {
-            self.title.try_init(&ctx.http, thread, "Donne un titre à ton annonce").await?;
-            return Ok(false);
+            if self.title.try_init(&ctx.http, thread, "Donne un titre à ton annonce").await? {
+                return Ok(false);
+            }
         }
 
         if self.description.is_unset() {
-            self.description.try_init(&ctx.http, thread, "Décris ton annonce, en quoi elle consiste, qui tu es etc...").await?;
-            return Ok(false);
+            if self.description.try_init(&ctx.http, thread, "Décris ton annonce, en quoi elle consiste, qui tu es etc...").await? {
+                return Ok(false);
+            }
         }
 
         if self.kind.is_unset() {
-            self.kind.try_init(&ctx.http, thread, "Quel type de contrat recherches-tu ?", vec![
+            if self.kind.try_init(&ctx.http, thread, "Quel type de contrat recherches-tu ?", vec![
                 ("🤝 Bénévolat (non rémunéré)", Contract::Volunteering(VolunteeringInfos::default())),
                 ("🪂 Stage", Contract::Internship(InternshipInfos::default())),
                 ("🤓 Alternance (rémunéré)", Contract::WorkStudy(WorkStudyInfos::default())),
                 ("🧐 Freelance", Contract::Freelance(FreelanceInfos::default())),
                 ("😎 CDD (rémunéré)", Contract::FixedTerm(FixedTermInfos::default())),
                 ("🤯 CDI (rémunéré)", Contract::OpenEnded(OpenEndedInfos::default())),
-            ]).await?;
-            return Ok(false);
+            ]).await? {
+                return Ok(false);
+            }
         }
 
         if let Some(kind) = self.kind.value_mut() {
@@ -195,23 +198,26 @@ impl SubStep for MainSteps {
 
         match self.contact.value_mut() {
             None => {
-                self.contact.try_init(&ctx.http, thread, "Comment peut-on te contacter ?", vec![
+                if self.contact.try_init(&ctx.http, thread, "Comment peut-on te contacter ?", vec![
                     ("Discord", Contact::Discord),
                     ("Autre", Contact::Other(TextOption::default())),
-                ]).await?;
-                return Ok(false);
+                ]).await? {
+                    return Ok(false);
+                }
             }
             Some(contact) => {
                 if let Contact::Other(other) = contact {
-                    other.try_init(&ctx.http, thread, "Indique au moins un moyen de contact (mail etc...)").await?;
-                    return Ok(false);
+                    if other.try_init(&ctx.http, thread, "Indique au moins un moyen de contact (mail etc...)").await? {
+                        return Ok(false);
+                    }
                 }
             }
         }
 
         if self.other_urls.is_unset() {
-            self.other_urls.try_init(&ctx.http, thread, "Précises d'autres liens utils").await?;
-            return Ok(false);
+            if self.other_urls.try_init(&ctx.http, thread, "Précises d'autres liens utils").await? {
+                return Ok(false);
+            }
         }
 
         Ok(true)
@@ -441,7 +447,7 @@ impl MainSteps {
         tags
     }
 
-    pub async fn send_test_message_to_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
+    pub async fn print_preview_message_in_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
         let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("publish", "")).label("Publier").style(ButtonStyle::Success)])]);
 
         if let Some(old_message) = self.demo_message {
