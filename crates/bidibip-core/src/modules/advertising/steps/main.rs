@@ -11,7 +11,7 @@ use crate::modules::advertising::steps::worker::WorkerInfos;
 use crate::modules::advertising::steps::work_study::WorkStudyInfos;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Message, MessageId, User};
+use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Message, MessageId, User, UserId};
 use serenity::builder::CreateButton;
 use crate::core::interaction_utils::make_custom_id;
 use crate::modules::advertising::{Advertising, AdvertisingTags};
@@ -117,6 +117,9 @@ pub struct MainSteps {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     demo_message: Option<MessageId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub edited_post: Option<(UserId, ChannelId)>,
 }
 
 #[serenity::async_trait]
@@ -139,6 +142,7 @@ impl ResetStep for MainSteps {
         self.contact.clean_for_storage();
         self.other_urls.clean_for_storage();
         self.demo_message = None;
+        self.edited_post = None;
     }
 }
 

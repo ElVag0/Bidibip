@@ -242,22 +242,26 @@ impl BidibipModule for Advertising {
                     } else {
                         return Ok(())
                     };
-
                     data.clean_for_storage();
-                    let message = data.create_message(&component.user);
 
-                    let title = assert_some!(data.title.value(), "Invalid title")?;
+                    if let Some((user, edited_post)) = &data.edited_post {
+                        todo!()
+                    } else {
+                        let message = data.create_message(&component.user);
 
-                    let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
+                        let title = assert_some!(data.title.value(), "Invalid title")?;
 
-                    ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
-                        ad_message: MessageReference::default(),
-                        description: data,
-                    });
-                    ad_config.in_progress_ad.remove(&component.user.id);
-                    on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
+                        let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
 
-                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                        ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
+                            ad_message: MessageReference::default(),
+                            description: data,
+                        });
+                        ad_config.in_progress_ad.remove(&component.user.id);
+                        on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
+
+                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                    }
                 }
 
                 if let Some(_) = component.data.get_custom_id_action::<Advertising>()

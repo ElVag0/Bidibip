@@ -433,17 +433,17 @@ impl Warn {
             }
         }
 
-        Ok(warn_config.moderation_warn_channel.send_message(http,
-                                                            CreateMessage::new()
-                                                                .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), Config::get().roles.administrator.mention()))
-                                                                .embed(embed)
-                                                                .components(vec![
-                                                                    CreateActionRow::Buttons(vec![
-                                                                        CreateButton::new("warn_update_message")
-                                                                            .label("Historique")
-                                                                            .style(ButtonStyle::Secondary)
-                                                                    ])
-                                                                ])).await?)
+        Ok(warn_config.moderation_warn_channel
+            .send_message(http, CreateMessage::new()
+                .content(format!("Sanction de {} par {} {}", warn_data.to.full(), warn_data.from.full(), Config::get().roles.administrator.mention()))
+                .embed(embed)
+                .components(vec![
+                    CreateActionRow::Buttons(vec![
+                        CreateButton::new("warn_update_message")
+                            .label("Historique")
+                            .style(ButtonStyle::Secondary)
+                    ])
+                ])).await?)
     }
 
     async fn store_new_warn(&self, warn_data: UserWarn) {
