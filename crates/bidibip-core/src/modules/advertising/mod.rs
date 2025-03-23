@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, ForumTagId, GuildChannel, Interaction, Mentionable, Message, User, UserId};
+use serenity::all::{ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, ForumTagId, GetMessages, GuildChannel, Interaction, Mentionable, Message, RoleId, User, UserId};
 use serenity::builder::{CreateActionRow, CreateButton};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
@@ -52,6 +52,7 @@ struct AdvertisingTags {
 struct AdvertisingConfig {
     tags: AdvertisingTags,
     ad_forum: ChannelId,
+    reviewer_roles: Vec<RoleId>,
     in_progress_ad_channel: ChannelId,
     max_ad_per_user: u64,
     stored_adds: HashMap<UserId, HashMap<ChannelId, StoredAdData>>,
@@ -63,6 +64,7 @@ impl Default for AdvertisingConfig {
         Self {
             tags: Default::default(),
             ad_forum: Default::default(),
+            reviewer_roles: vec![],
             in_progress_ad_channel: Default::default(),
             max_ad_per_user: 2,
             stored_adds: Default::default(),
@@ -195,96 +197,134 @@ impl BidibipModule for Advertising {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) -> Result<(), BidibipError> {
-        if let Interaction::Component(component) = &interaction {
-            if let ComponentInteractionDataKind::Button = component.data.kind {
+        match &interaction {
+            Interaction::Component(component) => {
+                if let ComponentInteractionDataKind::Button = component.data.kind {
 
-                // Create new ad
-                if component.data.get_custom_id_data::<Advertising>("create-ad").is_some() {
-                    let mut ad_config = self.ad_config.write().await;
-                    self.init_channel_with_data(&ctx, &mut ad_config, &interaction, MainSteps::default()).await?;
-                }
+                    // Create new ad
+                    if component.data.get_custom_id_data::<Advertising>("create-ad").is_some() {
+                        let mut ad_config = self.ad_config.write().await;
+                        self.init_channel_with_data(&ctx, &mut ad_config, &interaction, MainSteps::default()).await?;
+                    }
 
-                // Edit existing ad
-                if let Some(channel) = component.data.get_custom_id_data::<Advertising>("edit-ad") {
-                    let mut ad_config = self.ad_config.write().await;
-                    if let Some(user_ads) = ad_config.stored_adds.get(&component.user.id) {
-                        let edited_data_channel = ChannelId::new(u64::from_str(channel.as_str())?);
-                        let data = if let Some(data) = user_ads.get(&edited_data_channel) {
-                            Some(data.description.clone())
-                        } else { None };
-                        if let Some(data) = data {
-                            self.init_channel_with_data(&ctx, &mut ad_config, &interaction, data).await?;
+                    // Edit existing ad
+                    else if let Some(channel) = component.data.get_custom_id_data::<Advertising>("edit-ad") {
+                        let mut ad_config = self.ad_config.write().await;
+                        if let Some(user_ads) = ad_config.stored_adds.get(&component.user.id) {
+                            let edited_data_channel = ChannelId::new(u64::from_str(channel.as_str())?);
+                            let data = if let Some(data) = user_ads.get(&edited_data_channel) {
+                                Some(data.clone())
+                            } else { None };
+                            if let Some(mut data) = data {
+                                data.description.edited_post = Some(data.ad_message.clone());
+                                self.init_channel_with_data(&ctx, &mut ad_config, &interaction, data.description).await?;
+                            }
                         }
                     }
-                }
 
-                // Delete existing ad
-                if let Some(channel) = component.data.get_custom_id_data::<Advertising>("delete-ad") {
-                    let mut ad_config = self.ad_config.write().await;
-                    if let Some(user_ads) = ad_config.stored_adds.get_mut(&component.user.id) {
-                        let removed_data_channel = ChannelId::new(u64::from_str(channel.as_str())?);
-                        on_fail_warn!(removed_data_channel.delete(&ctx.http).await, "Failed to remove ad channel");
-                        assert_warn_some!(user_ads.remove(&removed_data_channel), "Ad data was empty, nothing to remove");
-                    }
-                    self.init_channel_with_data(&ctx, &mut ad_config, &interaction, MainSteps::default()).await?;
-                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
-                }
-
-                // Publish button
-                if component.data.get_custom_id_data::<Advertising>("publish").is_some() {
-                    let mut ad_config = self.ad_config.write().await;
-
-                    let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
-                        if *edition_thread != component.channel_id {
-                            return Ok(());
+                    // Delete existing ad
+                    else if let Some(channel) = component.data.get_custom_id_data::<Advertising>("delete-ad") {
+                        let mut ad_config = self.ad_config.write().await;
+                        if let Some(user_ads) = ad_config.stored_adds.get_mut(&component.user.id) {
+                            let removed_data_channel = ChannelId::new(u64::from_str(channel.as_str())?);
+                            on_fail_warn!(removed_data_channel.delete(&ctx.http).await, "Failed to remove ad channel");
+                            assert_warn_some!(user_ads.remove(&removed_data_channel), "Ad data was empty, nothing to remove");
                         }
-                        in_progress.clone()
-                    } else {
-                        return Ok(())
-                    };
-                    data.clean_for_storage();
+                        self.init_channel_with_data(&ctx, &mut ad_config, &interaction, MainSteps::default()).await?;
+                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
+                    }
 
-                    if let Some((user, edited_post)) = &data.edited_post {
-                        todo!()
-                    } else {
-                        let message = data.create_message(&component.user);
+                    else if component.data.get_custom_id_data::<Advertising>("pre-publish").is_some() {
 
-                        let title = assert_some!(data.title.value(), "Invalid title")?;
+                        let mut ad_config = self.ad_config.write().await;   
+                        for role in &ad_config.reviewer_roles {
 
-                        let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
+                        }
 
-                        ad_config.stored_adds.entry(component.user.id).or_default().insert(new_post.id, StoredAdData {
-                            ad_message: MessageReference::default(),
+                    }
+                    else if component.data.get_custom_id_data::<Advertising>("reject").is_some() {
+
+                    }
+                    else if component.data.get_custom_id_data::<Advertising>("validate").is_some() {
+                        let mut ad_config = self.ad_config.write().await;
+
+                        let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
+                            if *edition_thread != component.channel_id {
+                                return Ok(());
+                            }
+                            in_progress.clone()
+                        } else {
+                            return Ok(())
+                        };
+                        let edited_post = data.edited_post.take();
+
+                        data.clean_for_storage();
+
+                        let post = if let Some(edited_post) = edited_post {
+                            on_fail!(edited_post.channel().edit_message(&ctx.http, edited_post.id(), data.edit_message(&component.user)).await, "Failed to edit initial ad message")?;
+                            edited_post
+                        } else {
+                            let message = data.create_message(&component.user);
+
+                            let title = assert_some!(data.title.value(), "Invalid title")?;
+
+                            let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
+                            let messages = on_fail!(new_post.messages(&ctx.http, GetMessages::new().limit(10)).await, "Failed to get post first messages")?;
+                            MessageReference::from(assert_some!(messages.first(), "There is no message in this thread")?)
+                        };
+
+                        ad_config.stored_adds.entry(component.user.id).or_default().insert(post.channel(), StoredAdData {
+                            ad_message: post,
                             description: data,
                         });
                         ad_config.in_progress_ad.remove(&component.user.id);
-                        on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete channel")?;
-
+                        on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete edition channel")?;
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     }
-                }
 
-                if let Some(_) = component.data.get_custom_id_action::<Advertising>()
-                {
-                    let mut ad_config = self.ad_config.write().await;
-                    if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
-                        let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
-                        while let Some(item) = items.pop() {
-                            if item.clicked_button(&ctx, &component).await? {
-                                break;
+                    // Clicked on option button
+                    else if let Some(_) = component.data.get_custom_id_action::<Advertising>()
+                    {
+                        let mut ad_config = self.ad_config.write().await;
+                        if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
+                            let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
+                            while let Some(item) = items.pop() {
+                                if item.on_interaction(&ctx, &interaction).await? {
+                                    break;
+                                }
+                                items.append(&mut item.get_dependencies());
                             }
-                            items.append(&mut item.get_dependencies());
+
+                            // Move to next step
+                            let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
+                            self.advance_or_print(in_progress, &ctx, &guild_channel, &component.user).await?;
                         }
 
-                        // Move to next step
-                        let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-                        self.advance_or_print(in_progress, &ctx, &guild_channel, &component.user).await?;
+                        // Save modifications
+                        on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
                     }
-
-                    // Save modifications
-                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
                 }
             }
+            Interaction::Modal(modal) => {
+                let mut ad_config = self.ad_config.write().await;
+                if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&modal.user.id) {
+                    let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
+                    while let Some(item) = items.pop() {
+                        if item.on_interaction(&ctx, &interaction).await? {
+                            break;
+                        }
+                        items.append(&mut item.get_dependencies());
+                    }
+
+                    // Move to next step
+                    let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
+                    self.advance_or_print(in_progress, &ctx, &guild_channel, &modal.user).await?;
+                }
+
+                // Save modifications
+                on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
+            }
+            _ => {}
         }
 
         Ok(())

@@ -10,6 +10,15 @@ pub struct MessageReference {
     channel: ChannelId
 }
 
+impl From<&Message> for MessageReference {
+    fn from(value: &Message) -> Self {
+        Self {
+            id: value.id,
+            channel: value.channel_id
+        }
+    }
+}
+
 impl From<Message> for MessageReference {
     fn from(value: Message) -> Self {
         Self {

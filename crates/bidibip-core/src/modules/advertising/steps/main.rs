@@ -11,9 +11,10 @@ use crate::modules::advertising::steps::worker::WorkerInfos;
 use crate::modules::advertising::steps::work_study::WorkStudyInfos;
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, Colour, ComponentInteraction, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Message, MessageId, User, UserId};
-use serenity::builder::CreateButton;
+use serenity::all::{ButtonStyle, ChannelId, Colour, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Interaction, Message, MessageId, User};
+use serenity::builder::{CreateButton, EditMessage};
 use crate::core::interaction_utils::make_custom_id;
+use crate::core::message_reference::MessageReference;
 use crate::modules::advertising::{Advertising, AdvertisingTags};
 use crate::on_fail;
 
@@ -119,7 +120,7 @@ pub struct MainSteps {
     demo_message: Option<MessageId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub edited_post: Option<(UserId, ChannelId)>,
+    pub edited_post: Option<MessageReference>,
 }
 
 #[serenity::async_trait]
@@ -163,12 +164,12 @@ impl SubStep for MainSteps {
 
         if self.kind.is_unset() {
             if self.kind.try_init(&ctx.http, thread, "Quel type de contrat recherches-tu ?", vec![
-                ("🤝 Bénévolat (non rémunéré)", Contract::Volunteering(VolunteeringInfos::default())),
-                ("🪂 Stage", Contract::Internship(InternshipInfos::default())),
-                ("🤓 Alternance (rémunéré)", Contract::WorkStudy(WorkStudyInfos::default())),
-                ("🧐 Freelance", Contract::Freelance(FreelanceInfos::default())),
-                ("😎 CDD (rémunéré)", Contract::FixedTerm(FixedTermInfos::default())),
-                ("🤯 CDI (rémunéré)", Contract::OpenEnded(OpenEndedInfos::default())),
+                ("volunteering", "🤝 Bénévolat (non rémunéré)", Contract::Volunteering(VolunteeringInfos::default())),
+                ("internship", "🪂 Stage", Contract::Internship(InternshipInfos::default())),
+                ("workstudy", "🤓 Alternance (rémunéré)", Contract::WorkStudy(WorkStudyInfos::default())),
+                ("freelance", "🧐 Freelance", Contract::Freelance(FreelanceInfos::default())),
+                ("fixed", "😎 CDD (rémunéré)", Contract::FixedTerm(FixedTermInfos::default())),
+                ("open", "🤯 CDI (rémunéré)", Contract::OpenEnded(OpenEndedInfos::default())),
             ]).await? {
                 return Ok(false);
             }
@@ -187,8 +188,8 @@ impl SubStep for MainSteps {
 
         if self.is_recruiter.is_unset() {
             self.is_recruiter.try_init(&ctx.http, thread, "Es-tu recruteur ou recherches tu du travail ?", vec![
-                ("🔧 Je cherche du travail", What::Worker(WorkerInfos::default())),
-                ("🕵️‍♀️ Je recrute", What::Recruiter(RecruiterInfos::default())),
+                ("worker", "🔧 Je cherche du travail", What::Worker(WorkerInfos::default())),
+                ("recruiter", "🕵️‍♀️ Je recrute", What::Recruiter(RecruiterInfos::default())),
             ]).await?;
             return Ok(false);
         }
@@ -203,8 +204,8 @@ impl SubStep for MainSteps {
         match self.contact.value_mut() {
             None => {
                 if self.contact.try_init(&ctx.http, thread, "Comment peut-on te contacter ?", vec![
-                    ("Discord", Contact::Discord),
-                    ("Autre", Contact::Other(TextOption::default())),
+                    ("discord", "Discord", Contact::Discord),
+                    ("other", "Autre", Contact::Other(TextOption::default())),
                 ]).await? {
                     return Ok(false);
                 }
@@ -236,7 +237,7 @@ impl SubStep for MainSteps {
         self.other_urls.try_set(&ctx.http, thread, message).await?;
         Ok(())
     }
-    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+    async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {
         if let Some(Contact::Other(other)) = self.contact.value_mut() {
             if other.try_edit(&ctx.http, component).await? { return Ok(true); }
         }
@@ -271,9 +272,7 @@ impl SubStep for MainSteps {
 }
 
 impl MainSteps {
-    pub fn create_message(&mut self, user: &User) -> CreateMessage {
-        let mut message = CreateMessage::new();
-
+    fn build_content(&mut self, user: &User) -> Vec<CreateEmbed> {
         let title = match &self.title.value() {
             None => { "[Titre manquant]" }
             Some(title) => { title.as_str() }
@@ -375,12 +374,16 @@ impl MainSteps {
             demo_message: Option<MessageId>,
         }
         embeds.insert(0, main_embed);
-
-        message = message.embeds(embeds);
-
-        message
+        embeds
     }
 
+    pub fn edit_message(&mut self, user: &User) -> EditMessage {
+        EditMessage::new().embeds(self.build_content(user))
+    }
+
+    pub fn create_message(&mut self, user: &User) -> CreateMessage {
+        CreateMessage::new().embeds(self.build_content(user))
+    }
 
     pub fn get_tags(&self, config: &AdvertisingTags) -> Vec<ForumTagId> {
         let mut tags = vec![];
@@ -452,7 +455,9 @@ impl MainSteps {
     }
 
     pub async fn print_preview_message_in_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
-        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("publish", "")).label("Publier").style(ButtonStyle::Success)])]);
+        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![
+            CreateButton::new(make_custom_id::<Advertising>("pre-publish", "")).label("Publier").style(ButtonStyle::Success)
+        ])]);
 
         if let Some(old_message) = self.demo_message {
             #[allow(unused)]

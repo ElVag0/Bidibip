@@ -1,5 +1,5 @@
 use crate::core::error::BidibipError;
-use serenity::all::{ChannelId, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Context, CreateEmbed, GuildChannel, Http, Interaction, Message};
 
 pub mod main;
 mod internship;
@@ -17,7 +17,7 @@ pub trait SubStep: Sync + Send + ResetStep {
     #[allow(unused)]
     async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> { Ok(()) }
     #[allow(unused)]
-    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> { Ok(false) }
+    async fn on_interaction(&mut self, ctx: &Context, interaction: &Interaction) -> Result<bool, BidibipError> { Ok(false) }
     fn get_dependencies(&mut self) -> Vec<&mut dyn SubStep> { vec![] }
     #[allow(unused)]
     fn fill_message(&self, main_fields: &mut Vec<(String, String, bool)>, other_categories: &mut Vec<CreateEmbed>) {}

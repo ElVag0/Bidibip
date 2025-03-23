@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Colour, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Colour, Context, CreateEmbed, GuildChannel, Http, Interaction, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Location {
@@ -86,9 +86,9 @@ impl SubStep for WorkerInfos {
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.location.is_unset() {
             if self.location.try_init(&ctx.http, thread, "Souhaites-tu travailler à distance ou en présentiel ?", vec![
-                ("🌍 Distanciel", Location::Remote),
-                ("🤷‍♀️ Télétravail possible", Location::Anywhere(TextOption::default())),
-                ("🏣 Présentiel uniquement", Location::OnSite(TextOption::default()))]).await? {
+                ("remote", "🌍 Distanciel", Location::Remote),
+                ("any", "🤷‍♀️ Télétravail possible", Location::Anywhere(TextOption::default())),
+                ("on_site", "🏣 Présentiel uniquement", Location::OnSite(TextOption::default()))]).await? {
                 return Ok(false);
             }
         }
@@ -135,7 +135,7 @@ impl SubStep for WorkerInfos {
         Ok(())
     }
 
-    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+    async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {
         Ok(self.location.try_set(&ctx.http, component).await? || self.skills.try_edit(&ctx.http, component).await?)
     }
 }

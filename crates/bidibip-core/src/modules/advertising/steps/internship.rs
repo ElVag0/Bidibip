@@ -2,7 +2,7 @@ use crate::core::error::BidibipError;
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, ComponentInteraction, Context, CreateEmbed, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Context, CreateEmbed, GuildChannel, Http, Interaction, Message};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Compensation {
@@ -78,8 +78,8 @@ impl SubStep for InternshipInfos {
 
         if self.compensation.is_unset() {
             if self.compensation.try_init(&ctx.http, thread, "Le stage est-il rémunéré ?", vec![
-                ("Oui", Compensation::Yes(TextOption::default())),
-                ("No", Compensation::No),
+                ("y", "Oui", Compensation::Yes(TextOption::default())),
+                ("n", "No", Compensation::No),
             ]).await? {
                 return Ok(false);
             }
@@ -109,14 +109,14 @@ impl SubStep for InternshipInfos {
         Ok(())
     }
 
-    async fn clicked_button(&mut self, ctx: &Context, component: &ComponentInteraction) -> Result<bool, BidibipError> {
+    async fn on_interaction(&mut self, ctx: &Context, interaction: &Interaction) -> Result<bool, BidibipError> {
         if let Some(compensation) = self.compensation.value_mut() {
             if let Compensation::Yes(value) = compensation {
                 if value.is_unset() {
-                    if value.try_edit(&ctx.http, component).await? { return Ok(true); }
+                    if value.try_edit(&ctx.http, interaction).await? { return Ok(true); }
                 }
             }
         }
-        Ok(self.duration.try_edit(&ctx.http, component).await? || self.compensation.try_set(&ctx.http, component).await?)
+        Ok(self.duration.try_edit(&ctx.http, interaction).await? || self.compensation.try_set(&ctx.http, interaction).await?)
     }
 }
