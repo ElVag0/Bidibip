@@ -21,7 +21,7 @@ impl ResetStep for Compensation {
     fn clean_for_storage(&mut self) {
         match self {
             Compensation::No => {}
-            Compensation::Yes(v) => {v.clean_for_storage()}
+            Compensation::Yes(v) => { v.clean_for_storage() }
         }
     }
 }
@@ -71,7 +71,7 @@ impl SubStep for InternshipInfos {
 
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.duration.is_unset() {
-            if self.duration.try_init(&ctx.http, thread, "Durée du stage").await? {
+            if self.duration.try_init(&ctx.http, thread, "Durée du stage", false).await? {
                 return Ok(false);
             }
         }
@@ -87,7 +87,7 @@ impl SubStep for InternshipInfos {
         if let Some(compensation) = self.compensation.value_mut() {
             if let Compensation::Yes(value) = compensation {
                 if value.is_unset() {
-                    if value.try_init(&ctx.http, thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)").await? {
+                    if value.try_init(&ctx.http, thread, "Quelle est la gratification ? (4,35€/h minimum pour un stage de plus de 10 semaines)", false).await? {
                         return Ok(false);
                     }
                 }
@@ -97,16 +97,15 @@ impl SubStep for InternshipInfos {
     }
 
 
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
-        self.duration.try_set(&ctx.http, thread, message).await?;
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
         if let Some(compensation) = self.compensation.value_mut() {
             if let Compensation::Yes(value) = compensation {
                 if value.is_unset() {
-                    value.try_set(&ctx.http, thread, message).await?;
+                    if value.try_set(&ctx.http, thread, message).await? { return Ok(true); }
                 }
             }
         }
-        Ok(())
+        Ok(self.duration.try_set(&ctx.http, thread, message).await?)
     }
 
     async fn on_interaction(&mut self, ctx: &Context, interaction: &Interaction) -> Result<bool, BidibipError> {

@@ -1,6 +1,12 @@
+
+## Pas fait (urgent)
+
+> - ❌ anti-spam
+> - ❌ Mise à jour automatique
+
+
 ## En cours
 
-> - ⚡ Advertising
 > - ⚡ Utilities
 
 ## Fait
@@ -14,16 +20,9 @@
 > - ✅ Warns
 > - ✅ Welcome
 > - ✅ repost
-
-## Pas fait (urgent)
-
-> - ❌ anti-spam
->
-> 
-> - Nombre d'users
-> - Mise à jour automatique
+> - ✅ Advertising
+> - ✅ Nombre d'users
 
 ## Pas fait (pas urgent)
 > - ❌ Admin application
 > - ❌ server-download
->

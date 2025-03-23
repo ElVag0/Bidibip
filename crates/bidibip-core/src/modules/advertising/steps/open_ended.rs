@@ -31,7 +31,7 @@ impl SubStep for OpenEndedInfos {
     }
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.compensation.is_unset() {
-            if self.compensation.try_init(&ctx.http, thread, "Rémunération").await?
+            if self.compensation.try_init(&ctx.http, thread, "Rémunération", false).await?
             {
                 return Ok(false);
             }
@@ -39,9 +39,8 @@ impl SubStep for OpenEndedInfos {
         Ok(true)
     }
 
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
-        self.compensation.try_set(&ctx.http, thread, message).await?;
-        Ok(())
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
+        Ok(self.compensation.try_set(&ctx.http, thread, message).await?)
     }
 
     async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {

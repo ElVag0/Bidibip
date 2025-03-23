@@ -7,6 +7,7 @@ use crate::core::error::BidibipError;
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::modules::advertising::Advertising;
 use crate::{assert_some, on_fail, on_fail_warn};
+use crate::core::utilities::{TruncateText};
 use crate::modules::advertising::steps::ResetStep;
 
 fn default_none_value<T: Clone + ResetStep>() -> Option<(T, String)> {
@@ -137,6 +138,9 @@ impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
     /// Write the question in the given channel. Also write the current value if not null
     /// returns false if the question value is not null
     pub async fn try_init(&mut self, http: &Http, thread: &GuildChannel, title: impl Display, options: Vec<(&str, impl ToString, T)>) -> Result<bool, BidibipError> {
+        if self.question_options.is_some() {
+            return Ok(false);
+        }
         let mut out_options = HashMap::new();
 
         let mut components = vec![];
@@ -179,11 +183,23 @@ pub struct TextOption {
     // Value / edit button id
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    value: Option<(String, ButtonId)>,
-    // Question message / title
+    value: Option<String>,
+
+    #[serde(default)]
+    skipped: bool,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    question_message: Option<(MessageId, String)>,
+    edit_button: Option<ButtonId>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    clear_button: Option<ButtonId>,
+
+    // Question message / title / optional
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    question_message: Option<(MessageId, String, bool)>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
@@ -193,23 +209,24 @@ pub struct TextOption {
 #[serenity::async_trait]
 impl ResetStep for TextOption {
     async fn delete(&mut self, http: &Http, thread: &ChannelId) -> Result<(), BidibipError> {
-        if let Some((message, _)) = &self.question_message {
+        if let Some((message, _, _)) = &self.question_message {
             let message = on_fail!(thread.message(http, message).await, "Failed to get question message")?;
             on_fail!(message.delete(http).await, "Failed to delete question message")?;
         }
-        if let Some((_, edit_button)) = &mut self.value {
+        if let Some(edit_button) = &mut self.edit_button {
             edit_button.free()?;
         }
-
+        if let Some(clear_button) = &mut self.clear_button {
+            clear_button.free()?;
+        }
         self.value = None;
         self.question_message = None;
         Ok(())
     }
 
     fn clean_for_storage(&mut self) {
-        if let Some(val) = &mut self.value {
-            val.1 = ButtonId::default();
-        }
+        self.edit_button = None;
+        self.clear_button = None;
         self.waiting_edition_id = None;
         self.question_message = None;
     }
@@ -217,24 +234,33 @@ impl ResetStep for TextOption {
 
 impl TextOption {
     pub fn is_none(&self) -> bool {
-        self.value.is_none() && self.question_message.is_none()
+        (self.value.is_none() || self.skipped) && self.question_message.is_none()
     }
 
     // Return true if value was modified. To be modified you should have called init() before
     pub async fn try_set(&mut self, http: &Http, channel: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
-        if let Some((question_message, question)) = &self.question_message {
-            if self.value.is_some() {
+        if let Some((question_message, question, optional)) = &self.question_message {
+            if self.value.is_some() || self.skipped {
                 return Ok(false);
             }
 
-            let id = ButtonId::new()?;
+            let edit_button = ButtonId::new()?;
+            let clear_button = ButtonId::new()?;
+            let mut buttons = vec![CreateButton::new(edit_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")];
+            if *optional {
+                buttons.push(CreateButton::new(clear_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Supprimer"));
+            }
+
             let mut question_message = on_fail!(channel.message(http, question_message).await, format!("Failed to get question message for {}", question))?;
-            on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {question}\n`{}`", message.content)).components(vec![
-                CreateActionRow::Buttons(vec![CreateButton::new(id.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")])
-            ])).await,  format!("Failed to edit question message for {}", question))?;
+            on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {question}\n`{}`", message.content)).components(vec![CreateActionRow::Buttons(buttons)])).await,  format!("Failed to edit question message for {}", question))?;
             on_fail!(message.delete(http).await, "failed to delete response")?;
 
-            self.value = Some((message.content.clone(), id));
+            if let Some(clear_button) = &mut self.clear_button {
+                clear_button.free()?;
+            }
+            self.clear_button = Some(clear_button);
+            self.edit_button = Some(edit_button);
+            self.value = Some(message.content.clone());
             Ok(true)
         } else {
             Ok(false)
@@ -242,23 +268,59 @@ impl TextOption {
     }
 
     pub fn value(&self) -> Option<&String> {
-        match &self.value {
-            None => { None }
-            Some((value, _)) => { Some(value) }
-        }
+        self.value.as_ref()
     }
 
     pub async fn try_edit(&mut self, http: &Http, interaction: &Interaction) -> Result<bool, BidibipError> {
         match interaction {
             Interaction::Component(component) => {
-                if let Some((value, reset_button_id)) = &self.value {
+                if let Some(clear_button_id) = &self.clear_button {
                     if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>() {
-                        if reset_button_id.raw().to_string().as_str() == action {
-                            let (_, title) = assert_some!(&self.question_message, "Question message should be none")?;
+                        if clear_button_id.raw().to_string().as_str() == action {
+                            if let Some((question_message, title, _)) = &self.question_message {
+                                if let Some(edit_btn) = &mut self.edit_button {
+                                    edit_btn.free()?;
+                                }
+
+                                if let Some(clear_btn) = &mut self.clear_button {
+                                    clear_btn.free()?;
+                                }
+
+                                let edit_button = ButtonId::new()?;
+                                let clear_button = ButtonId::new()?;
+
+                                self.value = None;
+                                self.skipped = true;
+                                let mut question_message = on_fail!(component.channel_id.message(http, question_message).await, format!("Failed to get question message for {}", title))?;
+                                on_fail!(question_message.edit(http, EditMessage::new()
+                                    .content(format!("## ▶  {}\n:negative_squared_cross_mark:", title))
+                                    .components(vec![CreateActionRow::Buttons(vec![
+                                        CreateButton::new(edit_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")])])
+                                ).await, format!("Failed to edit question message for {}", title))?;
+
+                                self.clear_button = Some(clear_button);
+                                self.edit_button = Some(edit_button);
+                                on_fail!(component.defer(http).await, "Failed to acknowledge button")?;
+                                return Ok(true);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(edit_button_id) = &self.edit_button {
+                    if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>() {
+                        if edit_button_id.raw().to_string().as_str() == action {
+                            let (_, title, optional) = assert_some!(&self.question_message, "Question message should be none")?;
+
+                            let value = match &self.value {
+                                None => { String::new() }
+                                Some(val) => { val.clone() }
+                            };
+
                             let button = ButtonId::new()?;
                             on_fail!(component.create_response(http,
-                            CreateInteractionResponse::Modal(CreateModal::new(button.custom_id::<Advertising>(), title)
-                                .components(vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Paragraph, "Nouveau contenu", "text").placeholder("Nouveau contenu").value(value))]))).await, "Failed to create edit modal")?;
+                                CreateInteractionResponse::Modal(CreateModal::new(button.custom_id::<Advertising>(), title.truncate_text(45))
+                                    .components(vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Paragraph, "Nouveau contenu", "text").placeholder("Nouveau contenu").required(!optional).value(value))]))).await, "Failed to create edit modal")?;
                             self.waiting_edition_id = Some(button);
                             return Ok(true);
                         }
@@ -271,21 +333,25 @@ impl TextOption {
                         for component in &modal.data.components {
                             for component in &component.components {
                                 if let ActionRowComponent::InputText(text) = component {
-                                    if let Some(val) = &mut self.value {
+                                    let question = assert_some!(&self.question_message, "Failed to get question message")?;
 
-                                        let question = assert_some!(&self.question_message, "Failed to get question message")?;
+                                    let content = if text.value.is_none() || text.value.as_ref().unwrap().len() == 0 {
+                                        self.skipped = true;
+                                        self.value = None;
+                                        String::from(":negative_squared_cross_mark:")
+                                    } else {
+                                        self.value = Some(assert_some!(text.value.clone(), "empty modal text")?);
+                                        format!("`{}`", text.value.clone().unwrap_or_default())
+                                    };
 
-                                        val.0 = assert_some!(text.value.clone(), "empty modal text")?;
-                                        on_fail_warn!(modal.defer(http).await, "Failed to close edition modal");
-                                        edition_id.clone().free()?;
-                                        self.waiting_edition_id = None;
+                                    on_fail_warn!(modal.defer(http).await, "Failed to close edition modal");
+                                    edition_id.clone().free()?;
+                                    self.waiting_edition_id = None;
 
-                                        let mut question_message = on_fail!(modal.channel_id.message(http, question.0).await, format!("Failed to get question message for {}", question.1))?;
-                                        on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {}\n`{}`", question.1, val.0))).await,  format!("Failed to edit question message for {}", question.1))?;
+                                    let mut question_message = on_fail!(modal.channel_id.message(http, question.0).await, format!("Failed to get question message for {}", question.1))?;
+                                    on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {}\n{}", question.1, content))).await,  format!("Failed to edit question message for {}", question.1))?;
 
-                                        return Ok(true);
-                                    }
-                                    break;
+                                    return Ok(true);
                                 }
                             }
                             break;
@@ -300,31 +366,41 @@ impl TextOption {
     }
 
     pub fn is_unset(&self) -> bool {
-        self.value.is_none() || self.question_message.is_none()
+        (self.value.is_none() && !self.skipped) || self.question_message.is_none()
     }
 
     /// Write the question in the given channel. Also write the current value if not null
     /// returns false if the question value is not null
-    pub async fn try_init(&mut self, http: &Http, thread: &GuildChannel, title: impl Display) -> Result<bool, BidibipError> {
-        if self.question_message.is_some() { return Ok(true); }
+    pub async fn try_init(&mut self, http: &Http, thread: &GuildChannel, title: impl Display, optional: bool) -> Result<bool, BidibipError> {
+        if self.question_message.is_some() { return Ok(self.value.is_none()); }
         let message = match &mut self.value {
             None => {
-                on_fail!(thread.send_message(http, CreateMessage::new()
-                        .content(format!("## ▶  {title}\n> *Écris ta réponse sous ce message*"))
-                    ).await, "Failed to send message")?
+                let skip_button = ButtonId::new()?;
+                self.clear_button = Some(skip_button.clone());
+                let mut message = CreateMessage::new().content(format!("## ▶  {title}\n> *Écris ta réponse sous ce message*"));
+                if optional {
+                    message = message.components(vec![CreateActionRow::Buttons(vec![CreateButton::new(skip_button.custom_id::<Advertising>()).label("Ignorer").style(ButtonStyle::Secondary)])]);
+                }
+                on_fail!(thread.send_message(http,message).await, "Failed to send message")?
             }
             Some(value) => {
-                let button_id = ButtonId::new()?;
+                let edit_button = ButtonId::new()?;
+                let skip_button = ButtonId::new()?;
+
+                let mut buttons = vec![CreateButton::new(edit_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")];
+                if optional {
+                    buttons.push(CreateButton::new(skip_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Supprimer"));
+                }
+
                 let message = on_fail!(thread.send_message(http, CreateMessage::new()
-                            .content(format!("## ▶  {title}\n`{}`", value.0))
-                            .components(vec![
-                        CreateActionRow::Buttons(vec![CreateButton::new(button_id.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")])
-                    ])).await, "Failed to send message")?;
-                value.1 = button_id;
+                            .content(format!("## ▶  {title}\n`{}`", value))
+                            .components(vec![CreateActionRow::Buttons(buttons)])).await, "Failed to send message")?;
+                self.edit_button = Some(edit_button);
+                self.clear_button = Some(skip_button.clone());
                 message
             }
         };
-        self.question_message = Some((message.id, title.to_string()));
+        self.question_message = Some((message.id, title.to_string(), optional));
         Ok(self.value.is_none())
     }
 }

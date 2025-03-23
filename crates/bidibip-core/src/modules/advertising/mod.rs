@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, ForumTagId, GetMessages, GuildChannel, Interaction, Mentionable, Message, RoleId, User, UserId};
+use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, EditMessage, ForumTagId, GetMessages, GuildChannel, Interaction, Mentionable, Message, RoleId, User, UserId};
 use serenity::builder::{CreateActionRow, CreateButton};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
@@ -182,15 +182,18 @@ impl BidibipModule for Advertising {
 
             let mut items: Vec<&mut dyn SubStep> = vec![ad_config];
             while let Some(item) = items.pop() {
-                item.receive_message(&ctx, edition_thread, &message).await?;
+                if item.receive_message(&ctx, edition_thread, &message).await? {
+
+                    // Move to next step
+                    let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
+                    self.advance_or_print(ad_config, &ctx, &guild_channel, &message.author).await?;
+                    // Save modifications
+                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&config), "failed to save config")?;
+                    break;
+                }
                 items.append(&mut item.get_dependencies());
             }
 
-            // Move to next step
-            let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-            self.advance_or_print(ad_config, &ctx, &guild_channel, &message.author).await?;
-            // Save modifications
-            on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&config), "failed to save config")?;
         }
 
         Ok(())
@@ -229,26 +232,46 @@ impl BidibipModule for Advertising {
                             let removed_data_channel = ChannelId::new(u64::from_str(channel.as_str())?);
                             on_fail_warn!(removed_data_channel.delete(&ctx.http).await, "Failed to remove ad channel");
                             assert_warn_some!(user_ads.remove(&removed_data_channel), "Ad data was empty, nothing to remove");
+                            on_fail_warn!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Ton annonce a bien été supprimée !"))).await, "Failed to delete interaction message");
                         }
-                        self.init_channel_with_data(&ctx, &mut ad_config, &interaction, MainSteps::default()).await?;
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
-                    }
+                    } else if component.data.get_custom_id_data::<Advertising>("pre-publish").is_some() {
+                        let ad_config = self.ad_config.read().await;
+                        on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Bien reçu, nous allons passer en revue ton annonce"))).await, "Failed to send confirmation message")?;
 
-                    else if component.data.get_custom_id_data::<Advertising>("pre-publish").is_some() {
-
-                        let mut ad_config = self.ad_config.write().await;   
+                        let mut message = format!("{} a terminé son annonce, nous allons procéder à quelques vérifications avant de la publier.\n", component.user.mention());
                         for role in &ad_config.reviewer_roles {
-
+                            message += role.mention().to_string().as_str();
                         }
-
-                    }
-                    else if component.data.get_custom_id_data::<Advertising>("reject").is_some() {
-
-                    }
-                    else if component.data.get_custom_id_data::<Advertising>("validate").is_some() {
+                        on_fail!(component.channel_id.send_message(&ctx.http, CreateMessage::new().content(message)).await, "Failed to send confirmation message")?;
+                        on_fail!(component.message.clone().edit(&ctx.http, EditMessage::new().components(vec![
+                            CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("validate", "")).label("Publier").style(ButtonStyle::Success)])
+                        ])).await, "Failed to edit message")?;
+                    } else if component.data.get_custom_id_data::<Advertising>("validate").is_some() {
                         let mut ad_config = self.ad_config.write().await;
 
-                        let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&component.user.id) {
+                        let member = on_fail!(Config::get().server_id.member(&ctx.http, component.user.id).await, "Failed to get member data")?;
+
+                        let mut can_review = false;
+                        for role in member.roles {
+                            if ad_config.reviewer_roles.contains(&role) {
+                                can_review = true;
+                            }
+                        }
+                        if !can_review {
+                            on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Tu n'as pas l'autorisation requise pour faire ceci !"))).await, "Failed to send response")?;
+                            return Ok(());
+                        }
+
+                        let mut initial_user = None;
+                        for data in &ad_config.in_progress_ad {
+                            if data.1.0 == component.channel_id {
+                                initial_user = Some(on_fail!(data.0.to_user(&ctx.http).await, "Failed to get user data")?);
+                            }
+                        }
+                        let initial_user = assert_some!(initial_user, "Failed to get initial user")?;
+
+                        let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&initial_user.id) {
                             if *edition_thread != component.channel_id {
                                 return Ok(());
                             }
@@ -261,10 +284,10 @@ impl BidibipModule for Advertising {
                         data.clean_for_storage();
 
                         let post = if let Some(edited_post) = edited_post {
-                            on_fail!(edited_post.channel().edit_message(&ctx.http, edited_post.id(), data.edit_message(&component.user)).await, "Failed to edit initial ad message")?;
+                            on_fail!(edited_post.channel().edit_message(&ctx.http, edited_post.id(), data.edit_message(&initial_user)).await, "Failed to edit initial ad message")?;
                             edited_post
                         } else {
-                            let message = data.create_message(&component.user);
+                            let message = data.create_message(&initial_user);
 
                             let title = assert_some!(data.title.value(), "Invalid title")?;
 
@@ -273,11 +296,11 @@ impl BidibipModule for Advertising {
                             MessageReference::from(assert_some!(messages.first(), "There is no message in this thread")?)
                         };
 
-                        ad_config.stored_adds.entry(component.user.id).or_default().insert(post.channel(), StoredAdData {
+                        ad_config.stored_adds.entry(initial_user.id).or_default().insert(post.channel(), StoredAdData {
                             ad_message: post,
                             description: data,
                         });
-                        ad_config.in_progress_ad.remove(&component.user.id);
+                        ad_config.in_progress_ad.remove(&initial_user.id);
                         on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete edition channel")?;
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     }

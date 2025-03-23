@@ -41,12 +41,12 @@ impl Username {
 
 
 pub trait CommandHelper {
-    async fn skip(&self, http: &Arc<Http>) -> bool;
+    async fn skip(&self, http: &Http) -> bool;
     async fn respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T);
 }
 
 impl CommandHelper for CommandInteraction {
-    async fn skip(&self, http: &Arc<Http>) -> bool {
+    async fn skip(&self, http: &Http) -> bool {
         if self.defer(http).await.on_fail("Failed to defer command interaction") {
             self.delete_response(http).await.on_fail("Failed to delete command interaction");
             false
@@ -74,7 +74,7 @@ impl<T: Display> TruncateText for T {
 }
 
 impl CommandHelper for ComponentInteraction {
-    async fn skip(&self, http: &Arc<Http>) -> bool {
+    async fn skip(&self, http: &Http) -> bool {
         if self.defer(http).await.on_fail("Failed to defer command interaction") {
             self.delete_response(http).await.on_fail("Failed to delete command interaction");
             false

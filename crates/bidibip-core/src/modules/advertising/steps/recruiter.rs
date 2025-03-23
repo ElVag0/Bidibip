@@ -24,8 +24,8 @@ impl ResetStep for Location {
     fn clean_for_storage(&mut self) {
         match self {
             Location::Remote => {}
-            Location::OnSiteFlex(v) => {v.clean_for_storage()}
-            Location::OnSite(v) => {v.clean_for_storage()}
+            Location::OnSiteFlex(v) => { v.clean_for_storage() }
+            Location::OnSite(v) => { v.clean_for_storage() }
         }
     }
 }
@@ -118,14 +118,14 @@ impl SubStep for RecruiterInfos {
                 Location::Remote => {}
                 Location::OnSiteFlex(val) => {
                     if val.is_unset() {
-                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await? {
+                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?", false).await? {
                             return Ok(false);
                         }
                     }
                 }
                 Location::OnSite(val) => {
                     if val.is_unset() {
-                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?").await? {
+                        if val.try_init(&ctx.http, thread, "Quelle est ta ville / région ?", false).await? {
                             return Ok(false);
                         }
                     }
@@ -134,19 +134,19 @@ impl SubStep for RecruiterInfos {
         }
 
         if self.studio.is_unset() {
-            if self.studio.try_init(&ctx.http, thread, "Quel est le nom de ton entreprise / studio ?").await? {
+            if self.studio.try_init(&ctx.http, thread, "Quel est le nom de ton entreprise / studio ?", false).await? {
                 return Ok(false);
             }
         }
 
         if self.responsibilities.is_unset() {
-            if self.responsibilities.try_init(&ctx.http, thread, "Quelles sont les responsabilitées demandées ?").await? {
+            if self.responsibilities.try_init(&ctx.http, thread, "Quelles sont les responsabilitées demandées ?", false).await? {
                 return Ok(false);
             }
         }
 
         if self.qualifications.is_unset() {
-            if self.qualifications.try_init(&ctx.http, thread, "Quelles sont les compétences requises ?").await? {
+            if self.qualifications.try_init(&ctx.http, thread, "Quelles sont les compétences requises ?", false).await? {
                 return Ok(false);
             }
         }
@@ -154,18 +154,17 @@ impl SubStep for RecruiterInfos {
         Ok(true)
     }
 
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
         if let Some(value) = self.location.value_mut() {
             match value {
                 Location::Remote => {}
-                Location::OnSiteFlex(val) => { val.try_set(&ctx.http, thread, message).await?; }
-                Location::OnSite(val) => { val.try_set(&ctx.http, thread, message).await?; }
+                Location::OnSiteFlex(val) => { if val.try_set(&ctx.http, thread, message).await? { return Ok(true); } }
+                Location::OnSite(val) => { if val.try_set(&ctx.http, thread, message).await? { return Ok(true); } }
             }
         }
-        self.studio.try_set(&ctx.http, thread, message).await?;
-        self.qualifications.try_set(&ctx.http, thread, message).await?;
-        self.responsibilities.try_set(&ctx.http, thread, message).await?;
-        Ok(())
+        Ok(self.studio.try_set(&ctx.http, thread, message).await? ||
+            self.qualifications.try_set(&ctx.http, thread, message).await? ||
+            self.responsibilities.try_set(&ctx.http, thread, message).await?)
     }
 
     async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {

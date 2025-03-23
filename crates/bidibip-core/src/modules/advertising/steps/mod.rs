@@ -15,7 +15,7 @@ mod fixed_term;
 pub trait SubStep: Sync + Send + ResetStep {
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError>;
     #[allow(unused)]
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> { Ok(()) }
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> { Ok(false) }
     #[allow(unused)]
     async fn on_interaction(&mut self, ctx: &Context, interaction: &Interaction) -> Result<bool, BidibipError> { Ok(false) }
     fn get_dependencies(&mut self) -> Vec<&mut dyn SubStep> { vec![] }

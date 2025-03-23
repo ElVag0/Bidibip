@@ -17,6 +17,7 @@ mod welcome;
 mod reglement;
 mod repost;
 mod advertising;
+mod user_count;
 
 #[serenity::async_trait]
 pub trait BidibipModule: Sync + Send {
@@ -125,4 +126,5 @@ pub async fn load_modules(shared_data: &Arc<BidibipSharedData>) {
     load_module::<reglement::Reglement>(shared_data).await;
     load_module::<repost::Repost>(shared_data).await;
     load_module::<advertising::Advertising>(shared_data).await;
+    load_module::<user_count::UserCount>(shared_data).await;
 }

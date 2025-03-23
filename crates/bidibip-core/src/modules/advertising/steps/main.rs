@@ -151,13 +151,13 @@ impl ResetStep for MainSteps {
 impl SubStep for MainSteps {
     async fn advance(&mut self, ctx: &Context, thread: &GuildChannel) -> Result<bool, BidibipError> {
         if self.title.is_unset() {
-            if self.title.try_init(&ctx.http, thread, "Donne un titre à ton annonce").await? {
+            if self.title.try_init(&ctx.http, thread, "Donne un titre à ton annonce", false).await? {
                 return Ok(false);
             }
         }
 
         if self.description.is_unset() {
-            if self.description.try_init(&ctx.http, thread, "Décris ton annonce, en quoi elle consiste, qui tu es etc...").await? {
+            if self.description.try_init(&ctx.http, thread, "Décris ton annonce, en quoi elle consiste, qui tu es etc...", false).await? {
                 return Ok(false);
             }
         }
@@ -187,11 +187,12 @@ impl SubStep for MainSteps {
         }
 
         if self.is_recruiter.is_unset() {
-            self.is_recruiter.try_init(&ctx.http, thread, "Es-tu recruteur ou recherches tu du travail ?", vec![
+            if self.is_recruiter.try_init(&ctx.http, thread, "Es-tu recruteur ou recherches tu du travail ?", vec![
                 ("worker", "🔧 Je cherche du travail", What::Worker(WorkerInfos::default())),
                 ("recruiter", "🕵️‍♀️ Je recrute", What::Recruiter(RecruiterInfos::default())),
-            ]).await?;
-            return Ok(false);
+            ]).await? {
+                return Ok(false);
+            }
         }
 
         if let Some(recruiter) = self.is_recruiter.value_mut() {
@@ -212,7 +213,7 @@ impl SubStep for MainSteps {
             }
             Some(contact) => {
                 if let Contact::Other(other) = contact {
-                    if other.try_init(&ctx.http, thread, "Indique au moins un moyen de contact (mail etc...)").await? {
+                    if other.try_init(&ctx.http, thread, "Indique au moins un moyen de contact (mail etc...)", false).await? {
                         return Ok(false);
                     }
                 }
@@ -220,7 +221,7 @@ impl SubStep for MainSteps {
         }
 
         if self.other_urls.is_unset() {
-            if self.other_urls.try_init(&ctx.http, thread, "Précises d'autres liens utils").await? {
+            if self.other_urls.try_init(&ctx.http, thread, "Ajoutes d'autres informations (liens etc...)", true).await? {
                 return Ok(false);
             }
         }
@@ -228,14 +229,15 @@ impl SubStep for MainSteps {
         Ok(true)
     }
 
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
-        self.title.try_set(&ctx.http, thread, message).await?;
-        self.description.try_set(&ctx.http, thread, message).await?;
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
         if let Some(Contact::Other(other)) = self.contact.value_mut() {
-            other.try_set(&ctx.http, thread, message).await?;
+            if other.try_set(&ctx.http, thread, message).await? {
+                return Ok(true);
+            }
         }
-        self.other_urls.try_set(&ctx.http, thread, message).await?;
-        Ok(())
+        Ok(self.title.try_set(&ctx.http, thread, message).await? ||
+            self.description.try_set(&ctx.http, thread, message).await? ||
+            self.other_urls.try_set(&ctx.http, thread, message).await?)
     }
     async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {
         if let Some(Contact::Other(other)) = self.contact.value_mut() {
@@ -455,8 +457,8 @@ impl MainSteps {
     }
 
     pub async fn print_preview_message_in_channel(&mut self, ctx: &Context, thread: &ChannelId, user: &User) -> Result<(), BidibipError> {
-        let message = self.create_message(user).components(vec![CreateActionRow::Buttons(vec![
-            CreateButton::new(make_custom_id::<Advertising>("pre-publish", "")).label("Publier").style(ButtonStyle::Success)
+        let message = self.create_message(user).content("# Voici ton annonce telle qu'elle sera présentée. Vérifies les informations présentes avant de la publier.").components(vec![CreateActionRow::Buttons(vec![
+            CreateButton::new(make_custom_id::<Advertising>("pre-publish", "")).label("Publier").style(ButtonStyle::Primary)
         ])]);
 
         if let Some(old_message) = self.demo_message {

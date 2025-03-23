@@ -23,8 +23,8 @@ impl ResetStep for Location {
     fn clean_for_storage(&mut self) {
         match self {
             Location::Remote => {}
-            Location::Anywhere(v) => {v.clean_for_storage()}
-            Location::OnSite(v) => {v.clean_for_storage()}
+            Location::Anywhere(v) => { v.clean_for_storage() }
+            Location::OnSite(v) => { v.clean_for_storage() }
         }
     }
 }
@@ -98,14 +98,14 @@ impl SubStep for WorkerInfos {
                 Location::Remote => {}
                 Location::Anywhere(loc) => {
                     if loc.is_unset() {
-                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région").await? {
+                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région", false).await? {
                             return Ok(false);
                         }
                     }
                 }
                 Location::OnSite(loc) => {
                     if loc.is_unset() {
-                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région").await? {
+                        if loc.try_init(&ctx.http, thread, "Indique ta ville / région", false).await? {
                             return Ok(false);
                         }
                     }
@@ -114,7 +114,7 @@ impl SubStep for WorkerInfos {
         }
 
         if self.skills.is_unset() {
-            if self.skills.try_init(&ctx.http, thread, "Quelles sont tes compétences ?").await? {
+            if self.skills.try_init(&ctx.http, thread, "Quelles sont tes compétences ?", false).await? {
                 return Ok(false);
             }
         }
@@ -122,17 +122,17 @@ impl SubStep for WorkerInfos {
         Ok(true)
     }
 
-    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<(), BidibipError> {
-        if self.skills.try_set(&ctx.http, thread, message).await? { return Ok(()); }
+    async fn receive_message(&mut self, ctx: &Context, thread: &ChannelId, message: &Message) -> Result<bool, BidibipError> {
+        if self.skills.try_set(&ctx.http, thread, message).await? { return Ok(true); }
 
         if let Some(location) = self.location.value_mut() {
             match location {
                 Location::Remote => {}
-                Location::Anywhere(loc) => { loc.try_set(&ctx.http, thread, message).await?; }
-                Location::OnSite(loc) => { loc.try_set(&ctx.http, thread, message).await?; }
+                Location::Anywhere(loc) => { if loc.try_set(&ctx.http, thread, message).await? { return Ok(true); } }
+                Location::OnSite(loc) => { if loc.try_set(&ctx.http, thread, message).await? { return Ok(true); } }
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {
