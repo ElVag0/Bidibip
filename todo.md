@@ -1,7 +1,6 @@
 
 ## Pas fait (urgent)
 
-> - ❌ anti-spam
 > - ❌ Mise à jour automatique
 
 
@@ -22,6 +21,7 @@
 > - ✅ repost
 > - ✅ Advertising
 > - ✅ Nombre d'users
+> - ✅ anti-spam
 
 ## Pas fait (pas urgent)
 > - ❌ Admin application
