@@ -61,26 +61,22 @@ impl BidibipModule for Utilities {
         if cmd == "modules" {
             let modules = self.shared_data.modules.read().await;
 
-            let mut actions = vec![];
+            let mut available_modules = String::new();
             for module in modules.deref() {
-                actions.push(CreateActionRow::Buttons(vec![CreateButton::new("test").label(module.name.clone())]))
+                available_modules += format!("`{}` : {}\n", module.name, module.description).as_str();
             }
-
 
             on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .content(format!("{} modules disponibles", modules.len()))
+                    .content(format!("# {} modules disponibles:\n{}", modules.len(), available_modules))
                     .ephemeral(true)
-                    .components(actions)
             )).await, "Failed to create response")?;
-
-            command.skip(&ctx.http).await;
         } else if cmd == "update" {
             let client = reqwest::Client::new();
             let response = on_fail!(client.get("https://api.github.com/repos/Unreal-Engine-FR/Bidibip/releases")
                 .header("User-Agent", "Bidibip-updater")
                 .send().await, "Failed to get release list")?;
-            let data: Vec<ReleaseData> = on_fail!(response.json().await, "Faield to deserialize releases")?;
+            let data: Vec<ReleaseData> = on_fail!(response.json().await, "Failed to deserialize releases")?;
 
             if let Some(latest) = data.first() {
                 let mut config = self.utilities_config.write().await;

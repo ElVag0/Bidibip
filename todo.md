@@ -1,15 +1,11 @@
 
 ## Pas fait (urgent)
 
-> - ❌ Mise à jour automatique
-
-
 ## En cours
-
-> - ⚡ Utilities
 
 ## Fait
 
+> - ✅ Mise à jour automatique
 > - ✅ Reglement
 > - ✅ Help
 > - ✅ History
