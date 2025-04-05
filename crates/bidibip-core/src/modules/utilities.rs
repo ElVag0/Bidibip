@@ -8,14 +8,13 @@ use std::sync::Arc;
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serenity::all::{CommandInteraction, CommandType, Context, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::all::{CommandInteraction, CommandType, Context, CreateInteractionResponse, CreateInteractionResponseMessage};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::modules::{BidibipModule, LoadModule};
-use crate::core::utilities::CommandHelper;
 use crate::{assert_some, on_fail};
 
 pub struct Utilities {
