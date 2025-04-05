@@ -49,7 +49,7 @@ impl BidibipModule for Utilities {
             command.skip(&ctx.http).await;
         }
         else if cmd == "update" {
-            let mut resp = reqwest::get("https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/fileshare_server_linux.zip").await.expect("Failed to download latest bidibip version");
+            //let mut resp = reqwest::get("https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/fileshare_server_linux.zip").await.expect("Failed to download latest bidibip version");
 
 
 
