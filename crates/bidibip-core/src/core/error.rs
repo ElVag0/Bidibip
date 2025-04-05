@@ -4,6 +4,7 @@ pub struct BidibipError {
     msg: String,
 }
 
+
 impl BidibipError {
     pub fn msg<T: Display>(message: T) -> Self {
         Self {
@@ -12,6 +13,13 @@ impl BidibipError {
     }
 }
 
+impl From<reqwest::Error> for BidibipError {
+    fn from(value: reqwest::Error) -> Self {
+        Self {
+            msg: format!("{}", value),
+        }
+    }
+}
 impl From<serenity::prelude::SerenityError> for BidibipError {
     fn from(value: serenity::prelude::SerenityError) -> Self {
         Self {

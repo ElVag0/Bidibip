@@ -71,13 +71,13 @@ jobs:
 
       # Create Linux server zip
       - run: mkdir bidibip
-      - run: mv ./artifact_rust_linux/target/release/bidibip-core ./bidibip/
+      - run: mv ./artifact_rust_linux/bidibip-core ./bidibip/
       - run: zip -r bidibip_linux.zip ./bidibip/
       - run: rm -r ./bidibip
 
       # Create Windows server zip
       - run: mkdir bidibip
-      - run: mv ./artifact_rust_windows/target/release/bidibip-core.exe ./bidibip/
+      - run: mv ./artifact_rust_windows/bidibip-core.exe ./bidibip/
       - run: zip -r bidibip_windows.zip ./bidibip/
       - run: rm -r ./bidibip
 

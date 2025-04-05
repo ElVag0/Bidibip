@@ -1,7 +1,9 @@
 use std::ops::Deref;
 use std::sync::Arc;
 use anyhow::Error;
+use serde::Deserialize;
 use serenity::all::{CommandInteraction, CommandType, Context, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::futures::task::SpawnExt;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
@@ -27,6 +29,11 @@ impl LoadModule<Utilities> for Utilities {
     }
 }
 
+#[derive(Deserialize)]
+struct UpdateData {
+    releases: Vec<>
+}
+
 #[serenity::async_trait]
 impl BidibipModule for Utilities {
     async fn execute_command(&self, ctx: Context, cmd: &str, command: CommandInteraction) -> Result<(), BidibipError> {
@@ -47,11 +54,21 @@ impl BidibipModule for Utilities {
             )).await, "Failed to create response")?;
 
             command.skip(&ctx.http).await;
-        }
-        else if cmd == "update" {
+        } else if cmd == "update" {
+            /*
+                        let client = reqwest::Client::new();
+                        let response = client
+                            .get("https://api.github.com/repos/Unreal-Engine-FR/Bidibip/releases")
+                            .header("Accept", "application/vnd.github+json")
+                            .send()*/
+
+
+            //let response = reqwest::get("https://api.github.com/repos/Unreal-Engine-FR/Bidibip/releases").await?;
+
+            //let data: UpdateData = response.json().await?;
+
+
             //let mut resp = reqwest::get("https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/fileshare_server_linux.zip").await.expect("Failed to download latest bidibip version");
-
-
 
         }
         Ok(())
