@@ -48,12 +48,22 @@ impl BidibipModule for Utilities {
 
             command.skip(&ctx.http).await;
         }
+        else if cmd == "update" {
+            let mut resp = reqwest::get("https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/fileshare_server_linux.zip").await.expect("Failed to download latest bidibip version");
+
+
+
+        }
         Ok(())
     }
 
     fn fetch_commands(&self, config: &PermissionData) -> Vec<CreateCommandDetailed> {
         vec![CreateCommandDetailed::new("modules")
                  .description("Informations sur les modules")
+                 .kind(CommandType::ChatInput)
+                 .default_member_permissions(config.at_least_admin()),
+             CreateCommandDetailed::new("update")
+                 .description("Mets à jour Bidibip")
                  .kind(CommandType::ChatInput)
                  .default_member_permissions(config.at_least_admin()),
              /*

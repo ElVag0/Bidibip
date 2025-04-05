@@ -26,7 +26,6 @@ jobs:
           name: artifact-rust-linux
           retention-days: 1
           path: |
-            ./migrations/*
             ./target/release/bidibip-core
             ${{ steps.compile.outputs.BUILT_ARCHIVE }}
             ${{ steps.compile.outputs.BUILT_CHECKSUM }}
@@ -72,14 +71,12 @@ jobs:
 
       # Create Linux server zip
       - run: mkdir bidibip
-      - run: mkdir bidibip-core/migrations
       - run: mv ./artifact_rust_linux/target/release/bidibip-core ./bidibip/
       - run: zip -r bidibip_linux.zip ./bidibip/
       - run: rm -r ./bidibip
 
       # Create Windows server zip
       - run: mkdir bidibip
-      - run: mkdir bidibip/migrations
       - run: mv ./artifact_rust_windows/target/release/bidibip-core.exe ./bidibip/
       - run: zip -r bidibip_windows.zip ./bidibip/
       - run: rm -r ./bidibip
