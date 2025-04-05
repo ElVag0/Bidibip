@@ -359,7 +359,7 @@ impl BidibipModule for Warn {
                             for warn in &user.warns {
                                 let date = assert_some!(DateTime::from_timestamp(warn.date as i64, 0), "Failed to parse warn date time")?;
                                 embed = embed.field(format!("{} ({})", warn.action.clone(), date.format("%d %B %Y")),
-                                                    format!("{}\n{}", warn.reason.clone(), warn.full_message_link.clone()),
+                                                    format!("{}\n{}", warn.reason.clone().truncate_text(800), warn.full_message_link.clone()),
                                                     false);
                             }
                             on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(
@@ -423,10 +423,10 @@ impl Warn {
         {
             let warn_list = warn_config.warns.entry(warn_data.to.id()).or_default().warns.len();
             if let Some(details) = &warn_data.details {
-                embed = embed.field("Details", details, false);
+                embed = embed.field("Details", details.truncate_text(1024), false);
             }
             if let Some(url_data) = &warn_data.link {
-                embed = embed.field("Url", url_data, true);
+                embed = embed.field("Url", url_data.truncate_text(1024), true);
             }
             if warn_list > 0 {
                 embed = embed.field("Encore lui !", format!("Déjà {} warn(s)", warn_list), true);
@@ -458,31 +458,31 @@ impl Warn {
         let warn_config = self.warn_config.read().await;
         match action {
             ActionType::Ban => {
-                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été banni par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été banni par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason.truncate_text(4000)))).await?;
             }
             ActionType::Kick => {
-                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été kick par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été kick par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason.truncate_text(4000)))).await?;
             }
             ActionType::Warn => {}
             ActionType::BanVocal => {
-                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été exclu du vocal par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason))).await?;
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été exclu du vocal par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason.truncate_text(4000)))).await?;
             }
             ActionType::ExcludeOneHour => {
                 warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
-                    .description(&warn_data.reason)
+                    .description(&warn_data.reason.truncate_text(4000))
                     .field("durée", "une heure", true))).await?;
             }
             ActionType::ExcludeOneDay => {
                 warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
-                    .description(&warn_data.reason)
+                    .description(&warn_data.reason.truncate_text(4000))
                     .field("durée", "une journée", true))).await?;
             }
             ActionType::ExcludeOneWeek => {
                 warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
-                    .description(&warn_data.reason)
+                    .description(&warn_data.reason.truncate_text(4000))
                     .field("durée", "une semaine", true))).await?;
             }
         }
@@ -502,25 +502,25 @@ impl Warn {
             Ok(member) => {
                 match action {
                     ActionType::Ban => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni de **{server_name}** pour raison :\n\n> `{}`\n\nBonne continuation à toi ! :wave:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni de **{server_name}** pour raison :\n\n> `{}`\n\nBonne continuation à toi ! :wave:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::Kick => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour raison :\n\n> `{}`\n\nNous tolérerons ton retour à la seule condition que tu sois en mesure de respecter notre communauté. :point_up:\nBien à toi.", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour raison :\n\n> `{}`\n\nNous tolérerons ton retour à la seule condition que tu sois en mesure de respecter notre communauté. :point_up:\nBien à toi.", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::Warn => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nJe suis le robot de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nJe suis le robot de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::BanVocal => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni des salons vocaux de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni des salons vocaux de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::ExcludeOneHour => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour une heure.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour une heure.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::ExcludeOneDay => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour un jour.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour un jour.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                     ActionType::ExcludeOneWeek => {
-                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour une semaine.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason))).await?;
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour une semaine.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
                 }
             }

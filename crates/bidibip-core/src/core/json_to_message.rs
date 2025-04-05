@@ -1,6 +1,7 @@
 use anyhow::Error;
 use serde::Deserialize;
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateMessage};
+use crate::core::utilities::TruncateText;
 
 #[derive(Deserialize, Debug)]
 struct JsonToMessageButton {
@@ -48,14 +49,14 @@ pub fn json_to_message(json: String) -> Result<Vec<CreateMessage>, Error> {
                 for text in textes {
                     full_text += format!("{}\n", text).as_str();
                 }
-                data = data.content(full_text);
+                data = data.content(full_text.truncate_text(2000));
             }
         }
         if let Some(embeds) = message.embeds {
             for embed in embeds {
                 let mut create_embed = CreateEmbed::new().title(embed.titre);
                 if let Some(description) = embed.description {
-                    create_embed = create_embed.description(description);
+                    create_embed = create_embed.description(description.truncate_text(4096));
                 }
                 data = data.embed(create_embed);
             }

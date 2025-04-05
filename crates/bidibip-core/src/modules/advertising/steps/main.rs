@@ -1,5 +1,5 @@
 use crate::core::error::BidibipError;
-use crate::core::utilities::Username;
+use crate::core::utilities::{TruncateText, Username};
 use crate::modules::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::modules::advertising::steps::fixed_term::FixedTermInfos;
 use crate::modules::advertising::steps::freelance::FreelanceInfos;
@@ -329,7 +329,7 @@ impl MainSteps {
             .author(CreateEmbedAuthor::new(goal).icon_url(if let Some(avatar) = user.avatar_url() { avatar } else { user.default_avatar_url() }))
             .title(title)
             .color(Colour::PURPLE)
-            .description(format!("{}", description));
+            .description(format!("{}", description.truncate_text(4000)));
 
 
         let mut fields = vec![];
@@ -342,7 +342,7 @@ impl MainSteps {
         }
 
         for field in fields {
-            main_embed = main_embed.field(field.0, field.1, field.2);
+            main_embed = main_embed.field(field.0.truncate_text(256), field.1.truncate_text(1024), field.2);
         }
 
         let mut last_embed = CreateEmbed::new()
@@ -356,7 +356,7 @@ impl MainSteps {
                         Contact::Other(other) => {
                             match other.value() {
                                 None => { "[Donnée manquante]".to_string() }
-                                Some(val) => { val.clone() }
+                                Some(val) => { val.clone().truncate_text(4000) }
                             }
                         }
                     }
@@ -364,7 +364,7 @@ impl MainSteps {
             });
 
         if let Some(other) = self.other_urls.value() {
-            last_embed = last_embed.field("Autre", other, false);
+            last_embed = last_embed.field("Autre", other.truncate_text(1024), false);
         }
 
         embeds.push(last_embed);

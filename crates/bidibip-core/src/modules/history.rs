@@ -7,7 +7,7 @@ use tracing::{info};
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
 use crate::core::module::BidibipSharedData;
-use crate::core::utilities::{ResultDebug, Username};
+use crate::core::utilities::{ResultDebug, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;
 
@@ -82,7 +82,7 @@ impl BidibipModule for History {
                         .color(Colour::RED)
                         .title(format!("Message du {} supprimé par {}", date, from_name))
                         .description(deleted_message_id.link(channel_id, guild_id))
-                        .field(format!("de : {}", &user_name), &old_message_content, false))).await.on_fail("Failed to print message rename log");
+                        .field(format!("de : {}", &user_name), &old_message_content.truncate_text(1024), false))).await.on_fail("Failed to print message rename log");
 
             info!(target: "log","Message {} de {} du {} supprimé par {} : {}", deleted_message_id.link(channel_id, guild_id), user_name, date, from_name, old_message_content);
         } else {
@@ -162,10 +162,10 @@ impl BidibipModule for History {
             })
             .description(format!("Message modifié : {}", new_url));
         if !old_text.is_empty() {
-            embed = embed.field("ancien", &old_text, false);
+            embed = embed.field("ancien", &old_text.truncate_text(1024), false);
         }
         if !new_text.is_empty() {
-            embed = embed.field("nouveau", &new_text, false);
+            embed = embed.field("nouveau", &new_text.truncate_text(1024), false);
         }
 
         Config::get().channels.log_channel.send_message(

@@ -7,6 +7,7 @@ use serenity::builder::CreateEmbed;
 use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::{assert_some, on_fail};
+use crate::core::utilities::TruncateText;
 
 pub struct Help {
     shared_data: Arc<BidibipSharedData>,
@@ -44,10 +45,10 @@ impl BidibipModule for Help {
                 }
                 if let Some(kind) = found_command.kind {
                     if kind == CommandType::ChatInput {
-                        embed = embed.field(found_command.name.clone(), found_command.description.unwrap_or_default(), false);
+                        embed = embed.field(found_command.name.clone().truncate_text(256), found_command.description.unwrap_or_default().truncate_text(1024), false);
                     }
                 } else {
-                    embed = embed.field(found_command.name.clone(), found_command.description.unwrap_or_default(), false);
+                    embed = embed.field(found_command.name.clone().truncate_text(256), found_command.description.unwrap_or_default().truncate_text(1024), false);
                 }
             }
         }

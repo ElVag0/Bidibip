@@ -13,12 +13,12 @@ use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
-use crate::core::utilities::Username;
+use crate::core::utilities::{TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::{assert_some, assert_warn_some, on_fail, on_fail_warn};
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
-use crate::modules::advertising::steps::main::MainSteps;
+use crate::modules::advertising::steps::main::{Contract, MainSteps};
 use crate::modules::advertising::steps::{ResetStep, SubStep};
 
 pub struct Advertising {
@@ -151,7 +151,7 @@ impl BidibipModule for Advertising {
                                 Some(title) => { title.as_str() }
                             };
 
-                            on_fail!(command.create_followup(&ctx.http, CreateInteractionResponseFollowup::new().content(format!("**{}** : {}", title, data.ad_message.link(Config::get().server_id)))
+                            on_fail!(command.create_followup(&ctx.http, CreateInteractionResponseFollowup::new().content(format!("**{}** : {}", title.truncate_text(300), data.ad_message.link(Config::get().server_id)))
                                 .ephemeral(true)
                             .components(vec![CreateActionRow::Buttons(vec![
                                         CreateButton::new(make_custom_id::<Advertising>("edit-ad", channel)).label("Modifier"),
@@ -289,7 +289,18 @@ impl BidibipModule for Advertising {
                         } else {
                             let message = data.create_message(&initial_user);
 
-                            let title = assert_some!(data.title.value(), "Invalid title")?;
+                            let mut title = assert_some!(data.title.value(), "Invalid title")?.clone();
+
+                            if let Some(contract) = data.kind.value() {
+                                title = format!("{} {}", match contract {
+                                    Contract::Volunteering(_) => {":handshake:"}
+                                    Contract::Internship(_) => {":parachute:"}
+                                    Contract::Freelance(_) => {":face_with_monocle:"}
+                                    Contract::WorkStudy(_) => {":nerd:"}
+                                    Contract::FixedTerm(_) => {":sunglasses:"}
+                                    Contract::OpenEnded(_) => {":exploding_head:"}
+                                }, title.truncate_text(100));
+                            }
 
                             let new_post = on_fail!(ad_config.ad_forum.create_forum_post(&ctx.http, CreateForumPost::new(title, message.clone()).set_applied_tags(data.get_tags(&ad_config.tags))).await, "Failed to create forum post")?;
                             let messages = on_fail!(new_post.messages(&ctx.http, GetMessages::new().limit(10)).await, "Failed to get post first messages")?;

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serenity::all::{CommandType, CreateCommand, CreateCommandOption, EntryPointHandlerType, InstallationContext, InteractionContext, Permissions};
+use crate::core::utilities::TruncateText;
 
 #[derive(Clone)]
 pub struct CreateCommandDetailed {
@@ -25,7 +26,7 @@ impl From<CreateCommandDetailed> for CreateCommand {
             cmd = cmd.name_localized(localization.0, localization.1);
         }
         if let Some(description) = value.description {
-            cmd = cmd.description(description)
+            cmd = cmd.description(description.truncate_text(4000))
         }
         for localization in value.description_localizations {
             cmd = cmd.description_localized(localization.0, localization.1);

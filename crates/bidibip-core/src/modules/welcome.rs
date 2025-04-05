@@ -7,6 +7,7 @@ use crate::modules::{BidibipModule, LoadModule};
 use rand::seq::{IndexedRandom};
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
+use crate::core::utilities::TruncateText;
 use crate::on_fail;
 
 pub struct Welcome {
@@ -46,7 +47,7 @@ impl BidibipModule for Welcome {
         };
         sentence += "\n> N'oublies pas de lire le {reglement} pour accéder au serveur.";
         let sentence = sentence.replace("{user}", new_member.user.mention().to_string().as_str()).replace("{reglement}", self.welcome_config.reglement_channel.mention().to_string().as_str());
-        on_fail!(self.welcome_config.join_channel.send_message(&ctx.http, CreateMessage::new().content(sentence)).await, "Failed to send welcome message")?;
+        on_fail!(self.welcome_config.join_channel.send_message(&ctx.http, CreateMessage::new().content(sentence.truncate_text(2000))).await, "Failed to send welcome message")?;
         Ok(())
     }
 
@@ -56,7 +57,7 @@ impl BidibipModule for Welcome {
             Some(sentence) => { sentence.clone() }
         };
         let sentence = sentence.replace("{user}", user.mention().to_string().as_str());
-        on_fail!(self.welcome_config.leave_channel.send_message(&ctx.http, CreateMessage::new().content(sentence)).await, "Failed to send leave message")?;
+        on_fail!(self.welcome_config.leave_channel.send_message(&ctx.http, CreateMessage::new().content(sentence.truncate_text(2000))).await, "Failed to send leave message")?;
         Ok(())
     }
 }

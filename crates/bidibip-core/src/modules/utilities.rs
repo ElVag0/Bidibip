@@ -16,6 +16,7 @@ use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::{assert_some, on_fail};
+use crate::core::utilities::TruncateText;
 
 pub struct Utilities {
     shared_data: Arc<BidibipSharedData>,
@@ -67,7 +68,7 @@ impl BidibipModule for Utilities {
 
             on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .content(format!("# {} modules disponibles:\n{}", modules.len(), available_modules))
+                    .content(format!("# {} modules disponibles:\n{}", modules.len(), available_modules.truncate_text(1900)))
                     .ephemeral(true)
             )).await, "Failed to create response")?;
         } else if cmd == "update" {

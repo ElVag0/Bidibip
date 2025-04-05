@@ -252,12 +252,12 @@ impl BidibipModule for Repost {
                     data.repost_channel.insert(channel);
                     data.vote_enabled = vote;
                     on_fail!(self.save_config(&repost_config).await, "Failed to save config")?;
-                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} connecté du channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
+                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} connecté au channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
                 } else {
                     let mut repost_config = self.repost_config.write().await;
                     repost_config.forums.remove(&forum);
                     on_fail!(self.save_config(&repost_config).await, "Failed to save config")?;
-                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} déconnecté au channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
+                    on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!("Forum {} déconnecté du channel {} !", forum.mention(), channel.mention())))).await, "Failed to send confirmation message")?;
                 }
             }
             "reposte" => {
@@ -387,8 +387,8 @@ impl BidibipModule for Repost {
                                                                  .embed(CreateEmbed::new()
                                                                      .title("Votes actuels")
                                                                      .description(format!("Nombre de votes : {}", vote_config.yes.len() + vote_config.no.len()))
-                                                                     .field("Pour ✅", y_str, true)
-                                                                     .field("Contre ❌", n_str, true)))).await, "Failed to send interaction response")?;
+                                                                     .field("Pour ✅", y_str.truncate_text(1024), true)
+                                                                     .field("Contre ❌", n_str.truncate_text(1024), true)))).await, "Failed to send interaction response")?;
                             }
                         }
                     }

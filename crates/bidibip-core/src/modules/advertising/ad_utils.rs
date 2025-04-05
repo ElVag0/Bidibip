@@ -252,7 +252,7 @@ impl TextOption {
             }
 
             let mut question_message = on_fail!(channel.message(http, question_message).await, format!("Failed to get question message for {}", question))?;
-            on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {question}\n`{}`", message.content)).components(vec![CreateActionRow::Buttons(buttons)])).await,  format!("Failed to edit question message for {}", question))?;
+            on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {question}\n`{}`", message.content.truncate_text(1900))).components(vec![CreateActionRow::Buttons(buttons)])).await,  format!("Failed to edit question message for {}", question))?;
             on_fail!(message.delete(http).await, "failed to delete response")?;
 
             if let Some(clear_button) = &mut self.clear_button {
@@ -293,7 +293,7 @@ impl TextOption {
                                 self.skipped = true;
                                 let mut question_message = on_fail!(component.channel_id.message(http, question_message).await, format!("Failed to get question message for {}", title))?;
                                 on_fail!(question_message.edit(http, EditMessage::new()
-                                    .content(format!("## ▶  {}\n:negative_squared_cross_mark:", title))
+                                    .content(format!("## ▶  {}\n:negative_squared_cross_mark:", title.truncate_text(300)))
                                     .components(vec![CreateActionRow::Buttons(vec![
                                         CreateButton::new(edit_button.custom_id::<Advertising>()).style(ButtonStyle::Secondary).label("Modifier")])])
                                 ).await, format!("Failed to edit question message for {}", title))?;
@@ -349,7 +349,7 @@ impl TextOption {
                                     self.waiting_edition_id = None;
 
                                     let mut question_message = on_fail!(modal.channel_id.message(http, question.0).await, format!("Failed to get question message for {}", question.1))?;
-                                    on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {}\n{}", question.1, content))).await,  format!("Failed to edit question message for {}", question.1))?;
+                                    on_fail!(question_message.edit(http, EditMessage::new().content(format!("## ▶  {}\n{}", question.1.truncate_text(300), content.truncate_text(1650)))).await,  format!("Failed to edit question message for {}", question.1))?;
 
                                     return Ok(true);
                                 }
@@ -377,7 +377,7 @@ impl TextOption {
             None => {
                 let skip_button = ButtonId::new()?;
                 self.clear_button = Some(skip_button.clone());
-                let mut message = CreateMessage::new().content(format!("## ▶  {title}\n> *Écris ta réponse sous ce message*"));
+                let mut message = CreateMessage::new().content(format!("## ▶  {}\n> *Écris ta réponse sous ce message*", title.truncate_text(300)));
                 if optional {
                     message = message.components(vec![CreateActionRow::Buttons(vec![CreateButton::new(skip_button.custom_id::<Advertising>()).label("Ignorer").style(ButtonStyle::Secondary)])]);
                 }
@@ -393,7 +393,7 @@ impl TextOption {
                 }
 
                 let message = on_fail!(thread.send_message(http, CreateMessage::new()
-                            .content(format!("## ▶  {title}\n`{}`", value))
+                            .content(format!("## ▶  {}\n`{}`", title.truncate_text(300), value.truncate_text(1650)))
                             .components(vec![CreateActionRow::Buttons(buttons)])).await, "Failed to send message")?;
                 self.edit_button = Some(edit_button);
                 self.clear_button = Some(skip_button.clone());
