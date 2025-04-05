@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::io;
 
 pub struct BidibipError {
     msg: String,
@@ -13,6 +14,20 @@ impl BidibipError {
     }
 }
 
+impl From<io::Error> for BidibipError {
+    fn from(value: io::Error) -> Self {
+        Self {
+            msg: format!("{}", value),
+        }
+    }
+}
+impl From<chrono::ParseError> for BidibipError {
+    fn from(value: chrono::ParseError) -> Self {
+        Self {
+            msg: format!("{}", value),
+        }
+    }
+}
 impl From<reqwest::Error> for BidibipError {
     fn from(value: reqwest::Error) -> Self {
         Self {
