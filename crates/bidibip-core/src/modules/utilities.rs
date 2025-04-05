@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Error;
 use serde::Deserialize;
 use serenity::all::{CommandInteraction, CommandType, Context, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage};
-use serenity::futures::task::SpawnExt;
+//use serenity::futures::task::SpawnExt;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
 use crate::core::module::{BidibipSharedData, PermissionData};
@@ -31,7 +31,7 @@ impl LoadModule<Utilities> for Utilities {
 
 #[derive(Deserialize)]
 struct UpdateData {
-    releases: Vec<>
+    //releases: Vec<>
 }
 
 #[serenity::async_trait]
