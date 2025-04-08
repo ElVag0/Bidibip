@@ -1,18 +1,15 @@
-FROM node:18-alpine
-ENV NODE_ENV=production
-WORKDIR /home/node/Bidibip
+FROM ubuntu:latest
 
-# Install app dependencies
-# A wildcard is used to ensure both package.json AND package-lock.json are copied
-# where available (npm@5+)
-COPY package*.json ./
+# RUN apk add --no-cache --update curl git gcc build-base alpine-sdk
+RUN apt-get update
+RUN apt-get -y install curl unzip
+RUN curl -LJO https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/bidibip_linux.zip
+RUN unzip -q ./bidibip_linux.zip
+RUN mkdir /opt/bidibip
+RUN mv ./bidibip/bidibip-core /opt/bidibip/bidibip
+RUN rm ./bidibip_linux.zip
+RUN rmdir ./bidibip
+RUN chmod a+x /opt/bidibip/bidibip
 
-RUN npm install --production
-RUN apk add git # required to auto-update app from git
-# If you are building your code for production
-RUN npm ci --omit=dev
 
-# Bundle app source
-COPY . .
-
-CMD [ "node", "src/index.js" ]
+CMD ["/opt/bidibip/bidibip"]
