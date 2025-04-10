@@ -1,6 +1,7 @@
 # file types
 .env
 .idea
+Cargo.lock
 
 target/
 saved/
