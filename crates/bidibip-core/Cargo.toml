@@ -1,7 +1,7 @@
 [package]
 name = "bidibip-core"
 version = "4.0.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
 anyhow = "1.0.95"
