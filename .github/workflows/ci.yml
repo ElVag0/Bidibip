@@ -9,31 +9,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build_rust_linux_musl:
-    name: Linux musl - Rust app
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Build linux musl
-      uses:  stevenleadbeater/rust-musl-builder@master
-      with:
-          args: /bin/bash -c "cargo build --release --target=x86_64-unknown-linux-musl"
-
-    - run: ls -la
-    - run: ls -la ./target
-    - run: ls -la ./target/release
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: artifact-rust-linux
-        retention-days: 1
-        path: |
-          ./target/release/bidibip-core
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
-
   build_rust_linux:
     name: Linux - Rust app
     runs-on: ubuntu-22.04
