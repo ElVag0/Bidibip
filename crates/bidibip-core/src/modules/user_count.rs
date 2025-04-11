@@ -22,7 +22,7 @@ impl UserCount {
 
 impl LoadModule<UserCount> for UserCount {
     fn name() -> &'static str {
-        "Compteur de membres"
+        "member-count"
     }
 
     fn description() -> &'static str {
