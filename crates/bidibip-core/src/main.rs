@@ -42,7 +42,7 @@ async fn main() {
             GatewayIntents::GUILD_MODERATION;
 
     if validate(&Config::get().token).is_err() {
-        error!("Invalid token. Please check config file first");
+        error!("Invalid token "{}". Please check config file first ({})", Config::get().token, config_path.display());
         return;
     }
 
