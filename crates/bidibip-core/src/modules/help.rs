@@ -1,11 +1,10 @@
-use std::ops::Deref;
 use std::sync::Arc;
 use anyhow::Error;
 use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
 use serenity::all::{Colour, CommandInteraction, CommandType, Context, CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::builder::CreateEmbed;
 use crate::core::error::BidibipError;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::{assert_some, on_fail};
 use crate::core::utilities::TruncateText;
 
@@ -32,7 +31,7 @@ impl BidibipModule for Help {
     async fn execute_command(&self, ctx: Context, _: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         let mut embed = CreateEmbed::new().title("Aide de Bidibip").description("Liste des commandes disponibles :").color(Colour::DARK_GREEN);
 
-        for module in self.shared_data.modules.read().await.deref() {
+        for module in self.shared_data.get_enabled_modules().await {
             let permissions = self.shared_data.permissions.read().await.clone();
             for found_command in module.module.fetch_commands(&permissions) {
                 let member = assert_some!(command.member.clone(), "Failed to get member data")?;

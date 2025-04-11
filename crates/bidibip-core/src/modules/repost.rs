@@ -13,7 +13,7 @@ use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{OptionHelper, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::{assert_condition, assert_some, on_fail, on_fail_warn};

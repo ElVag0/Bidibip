@@ -1,6 +1,6 @@
 pub mod config;
 pub mod logger;
-pub mod module;
+pub mod global_interface;
 pub mod utilities;
 pub mod create_command_detailed;
 pub mod json_to_message;

@@ -1,5 +1,5 @@
 use crate::core::error::BidibipError;
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};

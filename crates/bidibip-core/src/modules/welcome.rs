@@ -2,7 +2,7 @@ use std::sync::{Arc};
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Context, CreateMessage, GuildId, Member, Mentionable, User};
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
 use rand::seq::{IndexedRandom};
 use crate::core::config::Config;

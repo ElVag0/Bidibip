@@ -9,7 +9,7 @@ use serenity::builder::{CreateButton, CreateMessage};
 use tokio::sync::RwLock;
 use crate::core::config::{ButtonId, Config};
 use crate::core::error::BidibipError;
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;
 

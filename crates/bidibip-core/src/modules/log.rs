@@ -3,7 +3,7 @@ use anyhow::Error;
 use serenity::all::{ComponentInteractionDataKind, Context, GuildId, Interaction, Member, Mentionable, ResolvedValue, User};
 use tracing::{info};
 use crate::core::error::BidibipError;
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::core::utilities::Username;
 use crate::modules::{BidibipModule, LoadModule};
 

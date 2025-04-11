@@ -5,7 +5,7 @@ use serenity::all::{ChannelId, ComponentInteractionDataKind, Context, GetMessage
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
 use crate::core::json_to_message::json_to_message;
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::modules::{BidibipModule, LoadModule};
 use crate::{on_fail, on_fail_warn};
 

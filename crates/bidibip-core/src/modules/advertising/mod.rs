@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::{assert_some, assert_warn_some, on_fail, on_fail_warn};

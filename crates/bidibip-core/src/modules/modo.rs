@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use tracing::{warn};
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{CommandHelper, Username};
 use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
 use crate::{assert_some, on_fail};

@@ -5,7 +5,7 @@ use crate::modules::{BidibipModule, CreateCommandDetailed, LoadModule};
 use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommandOption, ResolvedValue};
 use crate::core::error::BidibipError;
 use crate::core::json_to_message::json_to_message;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{CommandHelper, OptionHelper, ResultDebug};
 use crate::on_fail;
 

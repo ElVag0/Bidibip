@@ -12,7 +12,7 @@ use serenity::builder::{CreateActionRow, CreateEmbed, CreateInputText};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, warn};
 use crate::core::config::Config;
-use crate::core::module::{BidibipSharedData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 use crate::core::utilities::{OptionHelper, ResultDebug, TruncateText, Username};
 use crate::{assert_some, on_fail};
 use crate::core::error::BidibipError;

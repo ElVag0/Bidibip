@@ -4,7 +4,7 @@ use serenity::all::{AuditLogEntry, ChannelId, CommandInteraction, Context, Guild
 use tracing::{error};
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
-use crate::core::module::{BidibipSharedData, ModuleData, PermissionData};
+use crate::core::global_interface::{BidibipSharedData, PermissionData};
 
 mod say;
 mod warn;
@@ -101,32 +101,27 @@ pub trait LoadModule<T: BidibipModule> {
     async fn load(shared_data: &Arc<BidibipSharedData>) -> Result<T, Error>;
 }
 
-async fn load_module<T: 'static + LoadModule<T> + BidibipModule>(shared_data: &Arc<BidibipSharedData>) {
+async fn load_module_helper<T: 'static + LoadModule<T> + BidibipModule>(shared_data: &Arc<BidibipSharedData>) {
     match T::load(shared_data).await {
         Ok(module) => {
-            shared_data.modules.write().await.push(ModuleData {
-                module: Box::new(module),
-                command_names: Default::default(),
-                name: T::name().to_string(),
-                description: T::description().to_string(),
-            });
+            shared_data.register_module(module).await;
         }
         Err(err) => { error!("Failed to load module {} : {}", T::name(), err) }
     }
 }
 
 pub async fn load_modules(shared_data: &Arc<BidibipSharedData>) {
-    load_module::<say::Say>(shared_data).await;
-    load_module::<warn::Warn>(shared_data).await;
-    load_module::<log::Log>(shared_data).await;
-    load_module::<history::History>(shared_data).await;
-    load_module::<help::Help>(shared_data).await;
-    load_module::<modo::Modo>(shared_data).await;
-    load_module::<utilities::Utilities>(shared_data).await;
-    load_module::<welcome::Welcome>(shared_data).await;
-    load_module::<reglement::Reglement>(shared_data).await;
-    load_module::<repost::Repost>(shared_data).await;
-    load_module::<advertising::Advertising>(shared_data).await;
-    load_module::<user_count::UserCount>(shared_data).await;
-    load_module::<anti_spam::AntiSpam>(shared_data).await;
+    load_module_helper::<say::Say>(shared_data).await;
+    load_module_helper::<warn::Warn>(shared_data).await;
+    load_module_helper::<log::Log>(shared_data).await;
+    load_module_helper::<history::History>(shared_data).await;
+    load_module_helper::<help::Help>(shared_data).await;
+    load_module_helper::<modo::Modo>(shared_data).await;
+    load_module_helper::<utilities::Utilities>(shared_data).await;
+    load_module_helper::<welcome::Welcome>(shared_data).await;
+    load_module_helper::<reglement::Reglement>(shared_data).await;
+    load_module_helper::<repost::Repost>(shared_data).await;
+    load_module_helper::<advertising::Advertising>(shared_data).await;
+    load_module_helper::<user_count::UserCount>(shared_data).await;
+    load_module_helper::<anti_spam::AntiSpam>(shared_data).await;
 }

@@ -150,7 +150,8 @@ impl Config {
             };
             config.buttons = (buttons_path.to_path_buf(), serde_json::from_str(&fs::read_to_string(&buttons_path)?)?);
 
-            let _ = GLOBAL_CONFIG.set(config);
+            #[allow(unused)]
+            GLOBAL_CONFIG.set(config);
 
             Ok(())
         } else {

@@ -6,7 +6,7 @@ use serenity::builder::CreateEmbed;
 use tracing::{info};
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
-use crate::core::module::BidibipSharedData;
+use crate::core::global_interface::BidibipSharedData;
 use crate::core::utilities::{ResultDebug, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;

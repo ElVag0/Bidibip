@@ -6,7 +6,7 @@ use serenity::all::token::validate;
 use serenity::prelude::*;
 use tracing::error;
 use crate::core::config::Config;
-use crate::core::module::GlobalInterface;
+use crate::core::global_interface::GlobalInterface;
 
 #[tokio::main]
 async fn main() {
