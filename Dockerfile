@@ -11,5 +11,4 @@ RUN rm ./bidibip_linux.zip
 RUN rmdir ./bidibip
 RUN chmod a+x /opt/bidibip/bidibip
 
-
 CMD ["/opt/bidibip/bidibip"]

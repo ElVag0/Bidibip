@@ -2,6 +2,7 @@ mod core;
 mod modules;
 
 use std::{env};
+use std::path::PathBuf;
 use serenity::all::token::validate;
 use serenity::prelude::*;
 use tracing::error;
@@ -10,8 +11,14 @@ use crate::core::global_interface::GlobalInterface;
 
 #[tokio::main]
 async fn main() {
+
+    let config_path = match env::var("BIDIBIP_CONFIG") {
+        Ok(config) => {PathBuf::from(config.as_str())}
+        Err(_) => {env::current_exe().expect("Failed to find executable path").parent().unwrap().join("config.json")}
+    };
+
     // Open Config
-    if let Err(error) = Config::init(env::current_exe().expect("Failed to find executable path").parent().unwrap().join("config.json")) {
+    if let Err(error) = Config::init(config_path) {
         println!("Failed to load config : {}", error);
         return;
     };

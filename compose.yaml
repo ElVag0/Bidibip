@@ -1,3 +1,10 @@
 services:
   bidibip:
-    image: alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - ./saved:/saved
+    environment:
+      BIDIBIP_CONFIG: "/saved/config.json"
