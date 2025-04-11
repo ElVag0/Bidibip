@@ -14,9 +14,9 @@ use crate::core::error::BidibipError;
 use crate::core::interaction_utils::{make_custom_id, InteractionUtils};
 use crate::core::message_reference::MessageReference;
 use crate::core::module::{BidibipSharedData, PermissionData};
-use crate::core::utilities::{CommandHelper, OptionHelper, TruncateText, Username};
+use crate::core::utilities::{OptionHelper, TruncateText, Username};
 use crate::modules::{BidibipModule, LoadModule};
-use crate::{assert_condition, assert_some, on_fail};
+use crate::{assert_condition, assert_some, on_fail, on_fail_warn};
 
 pub struct Repost {
     repost_config: RwLock<RepostConfig>,
@@ -262,6 +262,7 @@ impl BidibipModule for Repost {
             }
             "reposte" => {
                 on_fail!(command.defer_ephemeral(&ctx.http).await, "Failed to defer command interaction")?;
+
                 let thread = assert_some!(on_fail!(command.channel_id.to_channel(&ctx.http).await, "Failed to get thread")?.guild(), "Failed to get guild thread")?;
 
                 let message = &assert_some!(command.data.options().find("message"), "Missing option 'message'")?;
@@ -276,13 +277,13 @@ impl BidibipModule for Repost {
                             match thread.message(&ctx.http, MessageId::from(id)).await {
                                 Ok(message) => { message }
                                 Err(err) => {
-                                    command.respond_user_error(&ctx.http, format!("Le message fourni n'est pas valid : {}", err)).await;
+                                    on_fail_warn!(command.edit_response(&ctx.http, EditInteractionResponse::new().content(format!("Le message fourni n'est pas valid : {}", err))).await, "Failed to edit response");
                                     return Ok(());
                                 }
                             }
                         }
                         Err(_) => {
-                            command.respond_user_error(&ctx.http, "L'option message doit être un identifiant de message ou le lien vers le message").await;
+                            on_fail_warn!(command.edit_response(&ctx.http, EditInteractionResponse::new().content(format!("L'option message doit être un identifiant de message ou le lien vers le message"))).await, "Failed to edit response");
                             return Ok(());
                         }
                     }
@@ -293,7 +294,7 @@ impl BidibipModule for Repost {
 
                 let forum = match thread.parent_id {
                     None => {
-                        command.respond_user_error(&ctx.http, "La commande doit être exécutée depuis un fil qui t'appartient").await;
+                        on_fail_warn!(command.edit_response(&ctx.http, EditInteractionResponse::new().content(format!("La commande doit être exécutée depuis un fil qui t'appartient"))).await, "Failed to edit response");
                         return Ok(());
                     }
                     Some(forum) => {
@@ -304,7 +305,7 @@ impl BidibipModule for Repost {
                 let mut config = self.repost_config.write().await;
                 let repost_config = match config.forums.get(&forum.id) {
                     None => {
-                        command.respond_user_error(&ctx.http, "La fonctionnalité de reposte n'est pas activée ici").await;
+                        on_fail_warn!(command.edit_response(&ctx.http, EditInteractionResponse::new().content(format!("La fonctionnalité de reposte n'est pas disponible dans ce contexte"))).await, "Failed to edit response");
                         return Ok(());
                     }
                     Some(forum_config) => { forum_config.clone() }
@@ -403,7 +404,6 @@ impl BidibipModule for Repost {
     async fn thread_create(&self, ctx: Context, thread: GuildChannel) -> Result<(), BidibipError> {
         if thread.kind == ChannelType::PublicThread {
             if let Some(potential_forum) = thread.parent_id {
-                //sleep(Duration::from_secs(1)).await;
 
                 let mut config = self.repost_config.write().await;
                 if config.votes.contains_key(&thread.id) {

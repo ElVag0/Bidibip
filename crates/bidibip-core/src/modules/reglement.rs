@@ -6,9 +6,8 @@ use crate::core::config::Config;
 use crate::core::error::BidibipError;
 use crate::core::json_to_message::json_to_message;
 use crate::core::module::BidibipSharedData;
-use crate::core::utilities::{ResultDebug};
 use crate::modules::{BidibipModule, LoadModule};
-use crate::on_fail;
+use crate::{on_fail, on_fail_warn};
 
 pub struct Reglement {
     reglement_config: ReglementConfig,
@@ -49,7 +48,7 @@ impl BidibipModule for Reglement {
                     ComponentInteractionDataKind::Button => {
                         let member = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http, component.user.id).await, "Failed to get member data")?;
                         on_fail!(member.add_role(&ctx.http, Config::get().roles.member).await, "Failed to give member role")?;
-                        component.defer(&ctx.http).await.on_fail("Failed to defer command interaction");
+                        on_fail_warn!(component.defer(&ctx.http).await, "Failed to defer command interaction");
                     }
                     _ => {}
                 }

@@ -54,7 +54,7 @@ impl CommandHelper for CommandInteraction {
     }
 
     async fn respond_user_error<T: Display>(&self, http: &Arc<Http>, message: T) {
-        self.create_response(http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!(":boom: **Mince alors !**\n{}", message.truncate_text(1000))))).await.on_fail("Failed to send command user error response");
+        self.create_response(http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content(format!(":boom: **Mince alors !**\n{}", message.truncate_text(1000))))).await.on_fail(format!("Failed to send command user error response : {}", message));
     }
 }
 

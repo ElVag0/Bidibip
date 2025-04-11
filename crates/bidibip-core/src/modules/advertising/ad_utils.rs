@@ -81,7 +81,7 @@ impl<T: Clone + ResetStep + Send + Sync> ButtonOption<T> {
             if let Some(options) = &self.question_options {
                 if let Some((action, _)) = component.data.get_custom_id_action::<Advertising>() {
                     if let Some(option) = options.items.get(&action) {
-                        on_fail!(component.defer(&http).await, "failed to defer interaction")?;
+                        on_fail_warn!(component.defer(&http).await, "failed to defer interaction");
 
                         if let Some(value) = &mut self.value {
                             value.0.delete(http, &component.channel_id).await?;
@@ -300,7 +300,7 @@ impl TextOption {
 
                                 self.clear_button = Some(clear_button);
                                 self.edit_button = Some(edit_button);
-                                on_fail!(component.defer(http).await, "Failed to acknowledge button")?;
+                                on_fail_warn!(component.defer(http).await, "Failed to acknowledge button");
                                 return Ok(true);
                             }
                         }
