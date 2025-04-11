@@ -313,6 +313,10 @@ impl EventHandler for GlobalInterface {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
+
+        //migrate(&ctx).await;
+
+
         self.log_connector.init_for_channel(Config::get().channels.log_channel, ctx.http.clone());
 
         self.fetch_roles(&ctx).await;

@@ -1,5 +1,6 @@
 mod core;
 mod modules;
+mod migration;
 
 use std::{env};
 use std::path::PathBuf;

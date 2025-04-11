@@ -1,5 +1,5 @@
 services:
-  bidibip:
+  bidibip_v4:
     build:
       context: .
       dockerfile: Dockerfile

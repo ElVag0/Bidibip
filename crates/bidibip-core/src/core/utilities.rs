@@ -12,6 +12,16 @@ pub struct Username {
 }
 
 impl Username {
+
+    #[allow(unused)]
+    pub fn placeholder() -> Self {
+        Self {
+            handle: "".to_string(),
+            server_name: "".to_string(),
+            id: UserId::new(1),
+        }
+    }
+
     pub fn from_user(user: &User) -> Self {
         let mut handle = user.name.clone();
         if let Some(discriminator) = &user.discriminator {

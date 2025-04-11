@@ -93,6 +93,7 @@ pub struct Config {
     pub server_id: GuildId,
     pub application_id: ApplicationId,
     pub log_directory: PathBuf,
+    pub button_id_config: PathBuf,
     pub module_config_directory: PathBuf,
     pub disabled_modules: Vec<String>,
     pub channels: Channels,
@@ -109,6 +110,7 @@ impl Default for Config {
             server_id: GuildId::default(),
             application_id: ApplicationId::default(),
             log_directory: PathBuf::from("saved/logs"),
+            button_id_config: PathBuf::from("button/buttons.json"),
             module_config_directory: PathBuf::from("saved/config"),
             disabled_modules: vec![],
             channels: Channels {

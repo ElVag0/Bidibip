@@ -73,18 +73,18 @@ impl LoadModule<Warn> for Warn {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-struct WarnConfig {
+pub struct WarnConfig {
     public_warn_channel: ChannelId,
     moderation_warn_channel: ChannelId,
     #[serde(rename = "ban-vocal")]
     ban_vocal: RoleId,
     // Key is user id
-    warns: HashMap<UserId, WarnedUserList>,
+    pub warns: HashMap<UserId, WarnedUserList>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct WarnedUserList {
-    warns: Vec<UserWarn>,
+    pub warns: Vec<UserWarn>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
