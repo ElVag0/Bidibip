@@ -11,15 +11,21 @@ use crate::core::global_interface::GlobalInterface;
 
 #[tokio::main]
 async fn main() {
-
     let config_path = match env::var("BIDIBIP_CONFIG") {
-        Ok(config) => {PathBuf::from(config.as_str())}
-        Err(_) => {env::current_exe().expect("Failed to find executable path").parent().unwrap().join("config.json")}
+        Ok(config) => { PathBuf::from(config.as_str()) }
+        Err(_) => {
+            let args: Vec<String> = env::args().collect();
+            if args.len() >= 2 {
+                PathBuf::from(args[1].clone())
+            } else {
+                env::current_exe().expect("Failed to find executable path").parent().unwrap().join("config.json")
+            }
+        }
     };
 
     // Open Config
-    if let Err(error) = Config::init(config_path) {
-        println!("Failed to load config : {}", error);
+    if let Err(error) = Config::init(config_path.clone()) {
+        println!("Failed to load config from {} : {}", config_path.display(), error);
         return;
     };
     let log_connector = core::logger::init_logger();
