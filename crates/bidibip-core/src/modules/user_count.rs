@@ -7,7 +7,6 @@ use serenity::all::{ActivityData, Context, GuildId, Member, Ready, User};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::core::config::Config;
-use crate::on_fail;
 
 #[derive(Serialize, Deserialize)]
 pub struct UserCount {
@@ -49,7 +48,28 @@ impl BidibipModule for UserCount {
     }
 
     async fn ready(&self, ctx: Context, _: Ready) -> Result<(), BidibipError> {
-        let count = on_fail!(Config::get().server_id.members(&ctx.http, None, None).await, "Failed to get all members")?.len();
+        let mut all_members : Vec<Member> = vec![];
+
+        loop {
+            let last = match all_members.last() {
+                None => {None}
+                Some(last) => {Some(last.user.id)}
+            };
+
+
+            match Config::get().server_id.members(&ctx.http, None, last).await {
+                Ok(mut members) => {
+                    if members.is_empty() {
+                        break;
+                    }
+                    all_members.append(&mut members);
+                }
+                Err(_) => { break }
+            }
+        }
+
+
+        let count = all_members.len();
         self.user_count.store(count, Ordering::SeqCst);
         self.update(ctx);
         Ok(())

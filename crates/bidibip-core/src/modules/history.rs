@@ -1,8 +1,11 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use anyhow::Error;
+use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Colour, Context, CreateMessage, GuildId, Message, MessageAction, MessageId, MessageUpdateEvent};
 use serenity::all::audit_log::Action;
 use serenity::builder::CreateEmbed;
+use tokio::sync::RwLock;
 use tracing::{info};
 use crate::core::config::Config;
 use crate::core::error::BidibipError;
@@ -12,6 +15,13 @@ use crate::modules::{BidibipModule, LoadModule};
 use crate::on_fail;
 
 pub struct History {
+    history_config: RwLock<HistoryConfig>
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct HistoryConfig {
+    /// Don't display logs from these channels (ie : admin channels)
+    channel_blacklist: HashSet<ChannelId>
 }
 
 impl LoadModule<History> for History {
@@ -24,13 +34,20 @@ impl LoadModule<History> for History {
     }
 
     async fn load(_: &Arc<BidibipSharedData>) -> Result<History, Error> {
-        Ok(History { })
+        let module = Self { history_config: Default::default() };
+        let modo_config = Config::get().load_module_config::<History, HistoryConfig>()?;
+        *module.history_config.write().await = modo_config;
+        Ok(module)
     }
 }
 
 #[serenity::async_trait]
 impl BidibipModule for History {
     async fn message_delete(&self, ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, guild_id: Option<GuildId>) -> Result<(), BidibipError> {
+        if self.history_config.read().await.channel_blacklist.contains(&channel_id) {
+            return Ok(())
+        }
+
         let date = deleted_message_id.created_at().format("%d %B %Y");
         let mut old_message_content = format!("Ancien message : {}", deleted_message_id.link(channel_id, guild_id));
         let mut user = None;
@@ -106,6 +123,9 @@ impl BidibipModule for History {
         let mut new_text = String::new();
 
         if let Some(old) = old_if_available {
+            if self.history_config.read().await.channel_blacklist.contains(&old.channel_id) {
+                return Ok(())
+            }
             if user.is_none() {
                 user = Some(old.author.clone());
             }
@@ -118,6 +138,10 @@ impl BidibipModule for History {
         }
 
         if let Some(new) = new {
+
+            if self.history_config.read().await.channel_blacklist.contains(&new.channel_id) {
+                return Ok(())
+            }
 
             // Skip self
             if new.author.id.get() == Config::get().application_id.get() {

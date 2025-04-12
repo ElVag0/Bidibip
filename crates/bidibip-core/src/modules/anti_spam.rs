@@ -7,16 +7,18 @@ use serenity::all::{ButtonStyle, ChannelId, Context, CreateActionRow, CreateInte
 use serenity::all::Interaction::Component;
 use serenity::builder::{CreateButton, CreateMessage};
 use tokio::sync::RwLock;
+use tracing::log::warn;
 use crate::core::config::{ButtonId, Config};
 use crate::core::error::BidibipError;
 use crate::core::global_interface::BidibipSharedData;
+use crate::core::message_reference::MessageReference;
 use crate::modules::{BidibipModule, LoadModule};
-use crate::on_fail;
+use crate::{on_fail};
 
 #[derive(Default)]
 struct LastMessage {
     content: String,
-    occurences: Vec<DateTime<Utc>>,
+    occurrences: Vec<(DateTime<Utc>, MessageReference)>,
     warned: bool,
 }
 
@@ -24,7 +26,7 @@ struct LastMessage {
 struct SpammerContext {
     kick_button: ButtonId,
     pardon_button: ButtonId,
-    spammer: UserId
+    spammer: UserId,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -33,7 +35,7 @@ struct AntiSpamConfig {
     max_delay_ms: i64,
     mute_role: RoleId,
     moderation_channel: ChannelId,
-    spammers: HashMap<MessageId, SpammerContext>
+    spammers: HashMap<MessageId, SpammerContext>,
 }
 
 impl Default for AntiSpamConfig {
@@ -75,14 +77,25 @@ impl BidibipModule for AntiSpam {
         let entry = history.entry(msg.author.id).or_default();
 
         if entry.content == msg.content {
-            let mut spam_count = 0;
-            for it in &entry.occurences {
-                let elapsed = Utc::now() - *it;
-                if elapsed < Duration::milliseconds(self.anti_spam_config.read().await.max_delay_ms) {
-                    spam_count += 1;
+            let mut spam_messages = vec![];
+
+            // Ensure the message was sent in different channels each time. (the same message sent in the same channel multiple times will not be detected)
+            for (_, channel) in &entry.occurrences {
+                if channel.channel() == msg.channel_id {
+                    return Ok(());
                 }
             }
-            if spam_count >= self.anti_spam_config.read().await.min_occurrences {
+
+            // Ensure all the messages was sent in a delay < max_delay_ms
+            for (date, message) in &entry.occurrences {
+                let elapsed = Utc::now() - *date;
+                if elapsed < Duration::milliseconds(self.anti_spam_config.read().await.max_delay_ms) {
+                    spam_messages.push(message.clone());
+                }
+            }
+
+            // If we reached the threshold of min_occurrences, consider the user as a spammer
+            if spam_messages.len() >= self.anti_spam_config.read().await.min_occurrences {
                 if entry.warned {
                     return Ok(());
                 }
@@ -103,6 +116,15 @@ impl BidibipModule for AntiSpam {
                         CreateButton::new(pardon_button.custom_id::<AntiSpam>()).style(ButtonStyle::Success).label("Pardonner")
                     ])])).await, "Failed to send warn message in modo channel")?;
 
+                for message in spam_messages {
+                    match message.message(&ctx.http).await {
+                        Ok(message) => {
+                            on_fail!(message.delete(&ctx.http).await, "Failed to delete spam message")?;
+                        }
+                        Err(err) => { warn!("Failed to get message to delete : {}", err) }
+                    }
+                }
+
                 config.spammers.insert(modo_message.id, SpammerContext {
                     kick_button,
                     pardon_button,
@@ -111,11 +133,11 @@ impl BidibipModule for AntiSpam {
                 Config::get().save_module_config::<AntiSpam, AntiSpamConfig>(&config)?;
             }
         } else {
-            entry.content = msg.content;
-            entry.occurences.clear();
+            entry.content = msg.content.clone();
+            entry.occurrences.clear();
             entry.warned = false;
         }
-        entry.occurences.push(Utc::now());
+        entry.occurrences.push((Utc::now(), MessageReference::from(&msg)));
         Ok(())
     }
 
@@ -133,8 +155,7 @@ impl BidibipModule for AntiSpam {
                     on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(format!("{} a été kick par {} pour cause de spam", infos.spammer.mention(), component.user.mention())))).await, "Failed to send response")?;
                     config.spammers.remove(&component.message.id);
                     Config::get().save_module_config::<AntiSpam, AntiSpamConfig>(&config)?;
-                }
-                else if infos.pardon_button.custom_id::<AntiSpam>().to_string() == component.data.custom_id {
+                } else if infos.pardon_button.custom_id::<AntiSpam>().to_string() == component.data.custom_id {
                     infos.kick_button.free()?;
                     infos.pardon_button.free()?;
                     let member = on_fail!(Config::get().server_id.member(&ctx.http, infos.spammer).await, "Not a member")?;
