@@ -2,7 +2,7 @@ services:
   bidibip_v4:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: scripts/Dockerfile
     restart: always
     volumes:
       - ./saved:/saved

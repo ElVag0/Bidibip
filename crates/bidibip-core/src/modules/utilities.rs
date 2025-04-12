@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serenity::all::{CommandInteraction, CommandOptionType, CommandType, Context, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, Ready, ResolvedValue};
 use tokio::sync::RwLock;
+use tracing::info;
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
 use crate::core::error::BidibipError;
@@ -60,12 +61,18 @@ struct ReleaseData {
 #[serenity::async_trait]
 impl BidibipModule for Utilities {
     async fn ready(&self, ctx: Context, _: Ready) -> Result<(), BidibipError> {
-        for module in &self.utilities_config.read().await.disabled_modules {
+        let config = self.utilities_config.read().await;
+
+        if let Some(version) = &config.current_version_release_date {
+            info!("Version de bidibip : {}", version)
+        }
+
+        for module in &config.disabled_modules {
             self.shared_data.set_module_enabled(&ctx, module.as_str(), false, false).await;
         }
         Ok(())
     }
-    
+
     async fn execute_command(&self, ctx: Context, cmd: &str, command: CommandInteraction) -> Result<(), BidibipError> {
         match cmd {
             "modules" => {
@@ -101,7 +108,7 @@ impl BidibipModule for Utilities {
                     let should_update = match &config.current_version_release_date {
                         None => { true }
                         Some(date) => {
-                            let locale_date: DateTime<Utc> = on_fail!(date.parse(), "Failed to read remote date")?;
+                            let locale_date: DateTime<Utc> = on_fail!(date.parse(), "Failed to read local date")?;
                             locale_date > remote_date
                         }
                     };
@@ -142,6 +149,8 @@ impl BidibipModule for Utilities {
                             config.current_version_release_date = Some(remote_date.to_string());
                             on_fail!(Config::get().save_module_config::<Utilities, UtilitiesConfig>(&config), "Failed to save config")?;
                             exit(0);
+                        } else {
+                            return Ok(());
                         }
                     } else {
                         on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true)
@@ -155,10 +164,9 @@ impl BidibipModule for Utilities {
 
                 if let ResolvedValue::String(name) = module {
                     if let ResolvedValue::Boolean(enabled) = enabled {
-
                         if !self.shared_data.available_modules().await.contains(&name.to_string()) {
                             on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("Ce module n'existe pas").ephemeral(true))).await, "Failed to respond")?;
-                            return Ok(())
+                            return Ok(());
                         }
                         self.shared_data.set_module_enabled(&ctx, name, enabled, true).await;
                         on_fail!(command.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(
@@ -176,7 +184,7 @@ impl BidibipModule for Utilities {
                             config.disabled_modules.insert(name.to_string());
                         }
                         on_fail!(Config::get().save_module_config::<Utilities, UtilitiesConfig>(&config), "Failed to save module config")?;
-                        return Ok(())
+                        return Ok(());
                     }
                 }
 
@@ -193,7 +201,7 @@ impl BidibipModule for Utilities {
                  .kind(CommandType::ChatInput)
                  .default_member_permissions(config.at_least_admin()),
              CreateCommandDetailed::new("update")
-                 .description("Mets à jour Bidibip")
+                 .description("Redémarre et mets à jour Bidibip")
                  .kind(CommandType::ChatInput)
                  .default_member_permissions(config.at_least_admin()),
              CreateCommandDetailed::new("set-module-enabled")
