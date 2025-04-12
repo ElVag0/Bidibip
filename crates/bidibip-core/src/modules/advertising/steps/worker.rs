@@ -55,7 +55,7 @@ impl SubStep for WorkerInfos {
         other_categories.push(
             CreateEmbed::new()
                 .color(Colour::PURPLE)
-                .title("Compétences")
+                .title("Mes compétences")
                 .description(match self.skills.value() {
                     None => { "[Donnée manquante]" }
                     Some(value) => { value.as_str() }

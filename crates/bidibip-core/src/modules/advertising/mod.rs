@@ -6,8 +6,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateThread, EditMessage, ForumTagId, GetMessages, GuildChannel, Interaction, Mentionable, Message, RoleId, User, UserId};
-use serenity::builder::{CreateActionRow, CreateButton};
+use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, ComponentInteractionDataKind, Context, CreateForumPost, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage, CreateModal, CreateThread, EditMessage, ForumTagId, GetMessages, GuildChannel, InputTextStyle, Interaction, Mentionable, Message, RoleId, User, UserId};
+use serenity::all::ActionRowComponent::InputText;
+use serenity::builder::{CreateActionRow, CreateButton, CreateInputText};
 use tokio::sync::RwLock;
 use crate::core::config::Config;
 use crate::core::create_command_detailed::CreateCommandDetailed;
@@ -193,7 +194,6 @@ impl BidibipModule for Advertising {
                 }
                 items.append(&mut item.get_dependencies());
             }
-
         }
 
         Ok(())
@@ -245,8 +245,13 @@ impl BidibipModule for Advertising {
                         }
                         on_fail!(component.channel_id.send_message(&ctx.http, CreateMessage::new().content(message)).await, "Failed to send confirmation message")?;
                         on_fail!(component.message.clone().edit(&ctx.http, EditMessage::new().components(vec![
-                            CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("validate", "")).label("Publier").style(ButtonStyle::Success)])
+                            CreateActionRow::Buttons(vec![CreateButton::new(make_custom_id::<Advertising>("validate", "")).label("Publier").style(ButtonStyle::Success),
+                            CreateButton::new(make_custom_id::<Advertising>("deny", "")).label("Révoquer").style(ButtonStyle::Danger)]),
                         ])).await, "Failed to edit message")?;
+                    } else if component.data.get_custom_id_data::<Advertising>("deny").is_some() {
+                        on_fail!(
+                            component.create_response(&ctx.http, CreateInteractionResponse::Modal(CreateModal::new("deny_modal", "Contenu problématique")
+                            .components(vec![CreateActionRow::InputText(CreateInputText::new(InputTextStyle::Paragraph, "Raison", component.message.id.to_string()).required(true))]))).await, "Failed to create modal")?;
                     } else if component.data.get_custom_id_data::<Advertising>("validate").is_some() {
                         let mut ad_config = self.ad_config.write().await;
 
@@ -293,12 +298,12 @@ impl BidibipModule for Advertising {
 
                             if let Some(contract) = data.kind.value() {
                                 title = format!("{} {}", match contract {
-                                    Contract::Volunteering(_) => {":handshake:"}
-                                    Contract::Internship(_) => {":parachute:"}
-                                    Contract::Freelance(_) => {":face_with_monocle:"}
-                                    Contract::WorkStudy(_) => {":nerd:"}
-                                    Contract::FixedTerm(_) => {":sunglasses:"}
-                                    Contract::OpenEnded(_) => {":exploding_head:"}
+                                    Contract::Volunteering(_) => { ":handshake:" }
+                                    Contract::Internship(_) => { ":parachute:" }
+                                    Contract::Freelance(_) => { ":face_with_monocle:" }
+                                    Contract::WorkStudy(_) => { ":nerd:" }
+                                    Contract::FixedTerm(_) => { ":sunglasses:" }
+                                    Contract::OpenEnded(_) => { ":exploding_head:" }
                                 }, title.truncate_text(100));
                             }
 
@@ -315,7 +320,6 @@ impl BidibipModule for Advertising {
                         on_fail!(component.channel_id.delete(&ctx.http).await, "Failed to delete edition channel")?;
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     }
-
                     // Clicked on option button
                     else if let Some(_) = component.data.get_custom_id_action::<Advertising>()
                     {
@@ -341,22 +345,49 @@ impl BidibipModule for Advertising {
             }
             Interaction::Modal(modal) => {
                 let mut ad_config = self.ad_config.write().await;
-                if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&modal.user.id) {
-                    let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
-                    while let Some(item) = items.pop() {
-                        if item.on_interaction(&ctx, &interaction).await? {
-                            break;
+
+                if modal.data.custom_id == "deny_modal" {
+                    if let Some(action_row) = modal.data.components.first() {
+                        if let Some(InputText(text)) = action_row.components.first() {
+                            if let Some(value) = &text.value {
+
+                                let mut demo_message =  None;
+
+                                let mut user = None;
+                                for in_progress in &mut ad_config.in_progress_ad {
+                                    if in_progress.1.0 == modal.channel_id {
+                                        user = Some(in_progress.0.clone());
+                                        demo_message = in_progress.1.1.demo_message.take();
+                                        break;
+                                    }
+                                }
+                                let user = assert_some!(user, "Failed to find initial user")?;
+                                let demo_message = assert_some!(demo_message, "Failed to find demo_message")?;
+                                on_fail!(modal.channel_id.send_message(&ctx.http, CreateMessage::new().content(format!("{}, ton annonce n'a pas été validée pour la raison suivante :\n{}\n\nTu peux encore modifier ton annonce avant de la ressoumettre pour qu'elle soit conforme aux prérequis.", user.mention(), value))).await, "Failed to send reason")?;
+                                let mut demo_message = on_fail!(modal.channel_id.message(&ctx.http, demo_message).await, "Failed to get demo message")?;
+                                on_fail!(demo_message.edit(&ctx.http, EditMessage::new().components(vec![])).await, "Failed to remove buttons")?;
+                                on_fail_warn!(modal.defer(&ctx.http).await, "Faield to defer modal");
+                            }
                         }
-                        items.append(&mut item.get_dependencies());
+                    }
+                } else {
+                    if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&modal.user.id) {
+                        let mut items: Vec<&mut dyn SubStep> = vec![in_progress];
+                        while let Some(item) = items.pop() {
+                            if item.on_interaction(&ctx, &interaction).await? {
+                                break;
+                            }
+                            items.append(&mut item.get_dependencies());
+                        }
+
+                        // Move to next step
+                        let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
+                        self.advance_or_print(in_progress, &ctx, &guild_channel, &modal.user).await?;
                     }
 
-                    // Move to next step
-                    let guild_channel = assert_some!(on_fail!(edition_thread.to_channel(&ctx.http).await, "Failed to get channel data")?.guild(), "Invalid guild thread data")?;
-                    self.advance_or_print(in_progress, &ctx, &guild_channel, &modal.user).await?;
+                    // Save modifications
+                    on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
                 }
-
-                // Save modifications
-                on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&mut ad_config), "Failed to save ad_config")?;
             }
             _ => {}
         }

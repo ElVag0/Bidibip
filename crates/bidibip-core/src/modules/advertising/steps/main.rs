@@ -106,6 +106,9 @@ pub struct MainSteps {
     #[serde(skip_serializing_if = "TextOption::is_none")]
     #[serde(default)]
     pub description: TextOption,
+    #[serde(skip_serializing_if = "TextOption::is_none")]
+    #[serde(default)]
+    pub who_are_you: TextOption,
     #[serde(skip_serializing_if = "ButtonOption::is_none")]
     #[serde(default)]
     pub is_recruiter: ButtonOption<What>,
@@ -117,7 +120,7 @@ pub struct MainSteps {
     pub other_urls: TextOption,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    demo_message: Option<MessageId>,
+    pub demo_message: Option<MessageId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub edited_post: Option<MessageReference>,
@@ -129,6 +132,7 @@ impl ResetStep for MainSteps {
         self.title.delete(http, thread).await?;
         self.kind.delete(http, thread).await?;
         self.description.delete(http, thread).await?;
+        self.who_are_you.delete(http, thread).await?;
         self.is_recruiter.delete(http, thread).await?;
         self.contact.delete(http, thread).await?;
         self.other_urls.delete(http, thread).await?;
@@ -139,6 +143,7 @@ impl ResetStep for MainSteps {
         self.title.clean_for_storage();
         self.kind.clean_for_storage();
         self.description.clean_for_storage();
+        self.who_are_you.clean_for_storage();
         self.is_recruiter.clean_for_storage();
         self.contact.clean_for_storage();
         self.other_urls.clean_for_storage();
@@ -158,6 +163,12 @@ impl SubStep for MainSteps {
 
         if self.description.is_unset() {
             if self.description.try_init(&ctx.http, thread, "Décris ton annonce, en quoi elle consiste, qui tu es etc...", false).await? {
+                return Ok(false);
+            }
+        }
+
+        if self.who_are_you.is_unset() {
+            if self.who_are_you.try_init(&ctx.http, thread, "Qui es tu ? Décris toi, ton entreprise, ton projet, ton expérience etc...", false).await? {
                 return Ok(false);
             }
         }
@@ -237,6 +248,7 @@ impl SubStep for MainSteps {
         }
         Ok(self.title.try_set(&ctx.http, thread, message).await? ||
             self.description.try_set(&ctx.http, thread, message).await? ||
+            self.who_are_you.try_set(&ctx.http, thread, message).await? ||
             self.other_urls.try_set(&ctx.http, thread, message).await?)
     }
     async fn on_interaction(&mut self, ctx: &Context, component: &Interaction) -> Result<bool, BidibipError> {
@@ -244,6 +256,7 @@ impl SubStep for MainSteps {
             if other.try_edit(&ctx.http, component).await? { return Ok(true); }
         }
         Ok(self.description.try_edit(&ctx.http, component).await? ||
+            self.who_are_you.try_edit(&ctx.http, component).await? ||
             self.title.try_edit(&ctx.http, component).await? ||
             self.other_urls.try_edit(&ctx.http, component).await? ||
             self.contact.try_set(&ctx.http, component).await? ||
@@ -281,6 +294,11 @@ impl MainSteps {
         };
 
         let description = match &self.description.value() {
+            None => { "[Aucune description]" }
+            Some(title) => { title.as_str() }
+        };
+
+        let who_are_you = match &self.who_are_you.value() {
             None => { "[Aucune description]" }
             Some(title) => { title.as_str() }
         };
@@ -334,6 +352,8 @@ impl MainSteps {
 
         let mut fields = vec![];
         let mut embeds = vec![];
+
+        embeds.push(CreateEmbed::new().title("Qui suis-je ?").description(who_are_you.truncate_text(4000)).color(Colour::PURPLE));
 
         let mut items = self.get_dependencies();
         while let Some(item) = items.pop() {
