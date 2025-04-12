@@ -1,6 +1,4 @@
 [workspace]
-members = [
-    "crates/bidibip-core"
-]
-default-members = ["crates/bidibip-core"]
+members = ["crates/*"]
+default-members = ["crates/bidibip"]
 resolver = "2"

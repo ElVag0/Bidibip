@@ -1,0 +1,15 @@
+[package]
+name = "modules"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serenity = { version = "0.12.4" }
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
+anyhow = "1.0.97"
+tracing = "0.1.41"
+serde = { version = "1.0.219", features = ["derive"] }
+rand = "0.8.5"
+chrono = "0.4.40"
+utils = {path = "../utils"}
+reqwest = { version = "0.11.27", features = ["json"] }
