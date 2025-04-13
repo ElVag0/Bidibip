@@ -4,9 +4,11 @@ use utils::error::BidibipError;
 use utils::global_interface::BidibipSharedData;
 use utils::module::{BidibipModule, LoadModule};
 use serde::{Deserialize, Serialize};
-use serenity::all::{ActivityData, Context, GuildId, Member, Ready, User};
+use serenity::all::{ActivityData, Context, GuildId, Http, Member, MembersIter, Ready, User};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use serenity::futures::StreamExt;
+use tracing::info;
 
 #[derive(Serialize, Deserialize)]
 pub struct UserCount {
@@ -49,28 +51,19 @@ impl BidibipModule for UserCount {
     }
 
     async fn ready(&self, ctx: Context, _: Ready) -> Result<(), BidibipError> {
-        let mut all_members : Vec<Member> = vec![];
+        let mut all_members: Vec<Member> = vec![];
 
-        loop {
-            let last = match all_members.last() {
-                None => {None}
-                Some(last) => {Some(last.user.id)}
-            };
-
-
-            match Config::get().server_id.members(&ctx.http, None, last).await {
-                Ok(mut members) => {
-                    if members.is_empty() {
-                        break;
-                    }
-                    all_members.append(&mut members);
+        {
+            let mut members = MembersIter::<Http>::stream(&ctx, Config::get().server_id).boxed();
+            while let Some(member_result) = members.next().await {
+                if let Ok(member) = member_result {
+                    all_members.push(member);
                 }
-                Err(_) => { break }
             }
         }
 
-
         let count = all_members.len();
+        info!("There is {} users", all_members.len());
         self.user_count.store(count, Ordering::SeqCst);
         self.update(ctx);
         Ok(())
