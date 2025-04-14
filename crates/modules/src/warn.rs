@@ -529,7 +529,7 @@ impl Warn {
                 }
             }
             Err(err) => {
-                error!("Failed to get user data : {err}")
+                warn!("Failed to send warn in member private messages : {err} (probably already kicked)")
             }
         }
         Ok(())
