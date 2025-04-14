@@ -299,12 +299,12 @@ impl BidibipModule for Advertising {
 
                             if let Some(contract) = data.kind.value() {
                                 title = format!("{} {}", match contract {
-                                    Contract::Volunteering(_) => { ":handshake:" }
-                                    Contract::Internship(_) => { ":parachute:" }
-                                    Contract::Freelance(_) => { ":face_with_monocle:" }
-                                    Contract::WorkStudy(_) => { ":nerd:" }
-                                    Contract::FixedTerm(_) => { ":sunglasses:" }
-                                    Contract::OpenEnded(_) => { ":exploding_head:" }
+                                    Contract::Volunteering(_) => { "🤝" }
+                                    Contract::Internship(_) => { "🪂" }
+                                    Contract::Freelance(_) => { "🧐" }
+                                    Contract::WorkStudy(_) => { "🤓" }
+                                    Contract::FixedTerm(_) => { "😎" }
+                                    Contract::OpenEnded(_) => { "🤯" }
                                 }, title.truncate_text(100));
                             }
 
