@@ -158,8 +158,6 @@ impl BidibipModule for Warn {
                     }
                 }
             } else if let Some(target) = command.data.target_id {
-                println!("bah ? '{}'", name);
-
                 let action = match name {
                     "warn" => ActionType::Warn,
                     "ban du vocal" => ActionType::BanVocal,
@@ -386,7 +384,9 @@ impl Warn {
     /// user : warned user
     /// action : warn, kick, ban...
     async fn open_warn_modal(&self, ctx: Context, user: User, action: ActionType, command: CommandInteraction) {
+        println!("@TODO : Pre lock pending_warn_actions");
         let mut pending_warn_actions = self.pending_warn_actions.lock().await;
+        println!("@TODO : Post lock pending_warn_actions");
 
         // Generate action id
         let mut id = 0;

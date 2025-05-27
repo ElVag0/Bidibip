@@ -120,7 +120,9 @@ impl Advertising {
     /// Advance to the next step (ask next question or print preview message)
     async fn advance_or_print(&self, config: &mut MainSteps, ctx: &Context, thread: &GuildChannel, user: &User) -> Result<(), BidibipError> {
         if config.advance(ctx, thread).await? {
-            config.print_preview_message_in_channel(ctx, &thread.id, &user).await?;
+            if let Err(err) = config.print_preview_message_in_channel(ctx, &thread.id, &user).await {
+                on_fail!(thread.send_message(&ctx.http, CreateMessage::new().content(format!(":no_entry:Impossible de formater l'annonce :no_entry: \n> {}", err.to_string()))).await, format!("Failed to send error reason : {}", err.to_string()))?;
+            }
         };
         Ok(())
     }

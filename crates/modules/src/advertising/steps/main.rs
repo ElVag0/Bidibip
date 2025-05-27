@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serenity::all::{ButtonStyle, ChannelId, Colour, Context, CreateActionRow, CreateEmbed, CreateEmbedAuthor, CreateMessage, ForumTagId, GuildChannel, Http, Interaction, Message, MessageId, User};
 use serenity::builder::{CreateButton, EditMessage};
 use utils::error::BidibipError;
-use utils::{on_fail};
 use crate::advertising::ad_utils::{ButtonOption, TextOption};
 use crate::advertising::{Advertising, AdvertisingTags};
 use crate::advertising::steps::fixed_term::FixedTermInfos;
@@ -487,7 +486,7 @@ impl MainSteps {
             thread.delete_message(&ctx.http, old_message).await;
         }
 
-        self.demo_message = Some(on_fail!(thread.send_message(&ctx.http, message).await, "Failed to send final message")?.id);
+        self.demo_message = Some(thread.send_message(&ctx.http, message).await?.id);
         Ok(())
     }
 }

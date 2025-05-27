@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::{Arc};
+use std::time::Duration;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ButtonStyle, ChannelId, ChannelType, CommandInteraction, CommandOptionType, ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateCommandOption, CreateEmbedAuthor, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditChannel, EditInteractionResponse, EditMessage, GetMessages, GuildChannel, GuildId, Interaction, Member, Mentionable, Message, MessageId, PartialGuildChannel, ResolvedValue, UserId};
 use serenity::all::colours::roles::GREEN;
 use serenity::builder::{CreateButton, CreateEmbed};
 use tokio::sync::RwLock;
+use tokio::time::sleep;
 use tracing::{error};
-
+use tracing::log::warn;
 use utils::module::{LoadModule, BidibipModule};
 use utils::global_interface::BidibipSharedData;
 use utils::error::BidibipError;
@@ -51,10 +53,10 @@ struct RepostConfig {
 }
 
 fn find_urls(initial_text: &String) -> Vec<String> {
-    let split = initial_text.split_whitespace();
+    let split = initial_text.split(|c: char| { c.is_whitespace() || c == '[' || c == ']' || c == '(' || c == ')' });
     let mut attachments = vec![];
     for i in split {
-        if i.contains("http") {
+        if i.starts_with("http") {
             attachments.push(i.to_string());
         }
     }
@@ -91,8 +93,10 @@ fn make_repost_message(source_message: &Message, thread: &GuildChannel, forum_na
 
     for url in &urls { // only for first image
         if !url.matches(r#".(mp4|mov|avi|mkv|flv|jpg|jpeg|png|webp|avif|gif)$"#).count() > 0 {
-            author = author.url(url);
-            break;
+            if url.starts_with("http") {
+                author = author.url(url);
+                break;
+            }
         }
     }
 
@@ -166,6 +170,19 @@ impl Repost {
     async fn user_vote(&self, ctx: Context, channel: ChannelId, component: ComponentInteraction, is_yes: bool) -> Result<(), BidibipError> {
         let mut config = self.repost_config.write().await;
         if let Some(vote_config) = config.votes.get_mut(&channel) {
+            let channel = on_fail!(vote_config.source_thread.to_channel(&ctx.http).await, "Failed to get source channel")?;
+            let guild = assert_some!(channel.guild(), "Failed to get guild channel")?;
+
+            if let Some(thread_metadata) = &guild.thread_metadata {
+                if thread_metadata.archived {
+                    on_fail!(component.create_response(&ctx.http,CreateInteractionResponse::Message(
+                                                                            CreateInteractionResponseMessage::new()
+                                                                                .ephemeral(true)
+                                                                                .content("Ce thread a été archivé. tu ne peux plus voter."))).await, "Failed to send interaction response")?;
+                    return Ok(());
+                }
+            }
+
             if is_yes {
                 vote_config.no.remove(&component.user.id);
                 if vote_config.yes.contains_key(&component.user.id) {
@@ -174,8 +191,6 @@ impl Repost {
                     vote_config.yes.insert(component.user.id, Username::from_user(&component.user));
                 }
 
-                let channel = on_fail!(vote_config.source_thread.to_channel(&ctx.http).await, "Failed to get source channel")?;
-                let guild = assert_some!(channel.guild(), "Failed to get guild channel")?;
                 on_fail!(self.update_vote_messages(&ctx, guild, &config).await, "Failed to update vote messages")?;
             } else {
                 vote_config.yes.remove(&component.user.id);
@@ -184,8 +199,6 @@ impl Repost {
                 } else {
                     vote_config.no.insert(component.user.id, Username::from_user(&component.user));
                 }
-                let channel = on_fail!(vote_config.source_thread.to_channel(&ctx.http).await, "Failed to get source channel")?;
-                let guild = assert_some!(channel.guild(), "Failed to get guild channel")?;
                 on_fail!(self.update_vote_messages(&ctx, guild, &config).await, "Failed to update vote messages")?;
             }
         }
@@ -406,14 +419,34 @@ impl BidibipModule for Repost {
     async fn thread_create(&self, ctx: Context, thread: GuildChannel) -> Result<(), BidibipError> {
         if thread.kind == ChannelType::PublicThread {
             if let Some(potential_forum) = thread.parent_id {
-
                 let mut config = self.repost_config.write().await;
                 if config.votes.contains_key(&thread.id) {
                     return Ok(());
                 }
-
                 let repost_config = if let Some(config) = config.forums.get(&potential_forum) { config.clone() } else { return Ok(()); };
-                let messages = on_fail!(thread.messages(&ctx.http, GetMessages::new().limit(1)).await,"Failed to get first messages in thread")?;
+
+                let mut cnt = 3;
+                let messages = loop {
+                    match thread.messages(&ctx.http, GetMessages::new().limit(1)).await {
+                        Ok(messages) => {
+                            break messages;
+                        }
+                        Err(err) => {
+                            warn!("Failed to get first message to repost in thread : ${err}", );
+
+                            cnt -= 1;
+                            if cnt == 0 {
+                                error!("Failed to get first message to repost in thread after 3 attempts");
+                                return Err(BidibipError::msg("Failed to get first message to repost in thread after 3 attempts"));
+                            }
+
+                            // Wait 1s for the first message. Sometimes the first message is not directly available so it throws an error
+                            sleep(Duration::from_millis(3000)).await;
+                            continue;
+                        }
+                    };
+                };
+
                 let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
                 let thread_owner = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
                 let forum_name = on_fail!(potential_forum.name(&ctx.http).await, "Failed to get forum name")?;
@@ -434,7 +467,7 @@ impl BidibipModule for Repost {
                 for repost_channel in repost_config.repost_channel {
                     let mut last_repost_message = None;
                     for message in make_repost_message(&initial_message, &thread, &forum_name, &thread_owner) {
-                        last_repost_message = Some(on_fail!(repost_channel.send_message(&ctx.http, message).await, format!("Failed to repost message in {}", repost_channel.mention()))?);
+                        last_repost_message = Some(on_fail!(repost_channel.send_message(&ctx.http, message).await, format!("Failed to repost message {} in {}", initial_message.link(), repost_channel.mention()))?);
                     }
 
                     if repost_config.vote_enabled {
