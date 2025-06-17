@@ -1,0 +1,15 @@
+services:
+  bidibip_v4:
+    build:
+      context: .
+      dockerfile: ./scripts/Dockerfile
+      args:
+        - VERSION=${VERSION}
+    restart: unless-stopped
+    volumes:
+      - ./logs:/opt/bidibip/logs
+      - bidibip_data:/opt/bidibip/data
+    container_name: bidibip-app
+
+volumes:
+  bidibip_data: { }

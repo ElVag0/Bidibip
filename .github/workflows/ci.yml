@@ -13,20 +13,33 @@ jobs:
     name: Linux - Rust app
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@main
+      - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.7.3
-        with:
-          prefix-key: "cache-ubuntu"
       - run: cargo build --release
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-rust-linux
+          name: artifact-linux
           retention-days: 1
           path: |
             ./target/release/bidibip
+            ${{ steps.compile.outputs.BUILT_ARCHIVE }}
+            ${{ steps.compile.outputs.BUILT_CHECKSUM }}
+
+  build_rust_linux_musl:
+    name: Linux Musl - Rust app
+    runs-on: ubuntu-22.04
+    container: ghcr.io/blackdex/rust-musl:x86_64-musl
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-linux_musl
+          retention-days: 1
+          path: |
+            ./target/x86_64-unknown-linux-musl/release/bidibip
             ${{ steps.compile.outputs.BUILT_ARCHIVE }}
             ${{ steps.compile.outputs.BUILT_CHECKSUM }}
 
@@ -54,14 +67,26 @@ jobs:
   package:
     name: Upload release
     runs-on: ubuntu-22.04
-    needs: [build_rust_windows, build_rust_linux]
+    needs: [build_rust_windows, build_rust_linux, build_rust_linux_musl]
     steps:
+      - uses: actions/checkout@v2
+
+      # Create Docker setup zip
+      - run: mv docker bidibip-dockerized
+      - run: zip -r bidibip-dockerized.zip ./bidibip-dockerized/
+
       # Download generated artifacts
       - name: Retrieve artifact Rust/Windows
         uses: actions/download-artifact@main
         with:
-          name: artifact-rust-windows
-          path: ./artifact_rust_windows
+          name: artifact-linux_musl
+          path: ./artifact_linux_musl
+
+      - name: Retrieve artifact Rust/Linux Musl
+        uses: actions/download-artifact@main
+        with:
+          name: artifact-rust-linux
+          path: ./artifact_rust_linux
 
       - name: Retrieve artifact Rust/Linux
         uses: actions/download-artifact@main
@@ -73,6 +98,12 @@ jobs:
       - run: mkdir bidibip
       - run: mv ./artifact_rust_linux/bidibip ./bidibip/
       - run: zip -r bidibip_linux.zip ./bidibip/
+      - run: rm -r ./bidibip
+
+      # Create Linux MUSL server zip
+      - run: mkdir bidibip
+      - run: mv ./artifact_linux_musl/bidibip ./bidibip/
+      - run: zip -r bidibip_linux_musl.zip ./bidibip/
       - run: rm -r ./bidibip
 
       # Create Windows server zip
@@ -88,4 +119,6 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             bidibip_linux.zip
+            bidibip_linux_musl.zip
             bidibip_windows.zip
+            bidibip-dockerized.zip
