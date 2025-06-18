@@ -71,40 +71,39 @@ jobs:
       - run: mv docker bidibip-dockerized
       - run: zip -r bidibip-dockerized.zip ./bidibip-dockerized/
 
-      # Download generated artifacts
-      - name: Retrieve artifact Rust/Windows
-        uses: actions/download-artifact@main
-        with:
-          name: artifact-windows
-          path: ./artifact_linux_musl
-
-      - name: Retrieve artifact Rust/Linux Musl
-        uses: actions/download-artifact@main
-        with:
-          name: artifact-linux_musl
-          path: ./artifact_rust_linux
-
+      # Create Linux server zip
       - name: Retrieve artifact Rust/Linux
         uses: actions/download-artifact@main
         with:
           name: artifact-linux
-          path: ./artifact_rust_linux
+          path: ./artifact_linux
 
-      # Create Linux server zip
       - run: mkdir bidibip
-      - run: mv ./artifact_rust_linux/bidibip ./bidibip/
+      - run: mv ./artifact_linux/bidibip ./bidibip/
       - run: zip -r bidibip_linux.zip ./bidibip/
       - run: rm -r ./bidibip
 
       # Create Linux MUSL server zip
+      - name: Retrieve artifact Rust/Linux Musl
+        uses: actions/download-artifact@main
+        with:
+          name: artifact-linux_musl
+          path: ./artifact_linux_musl
+
       - run: mkdir bidibip
       - run: mv ./artifact_linux_musl/bidibip ./bidibip/
       - run: zip -r bidibip_linux_musl.zip ./bidibip/
       - run: rm -r ./bidibip
 
       # Create Windows server zip
+      - name: Retrieve artifact Rust/Windows
+        uses: actions/download-artifact@main
+        with:
+          name: artifact-windows
+          path: ./artifact_windows
+
       - run: mkdir bidibip
-      - run: mv ./artifact_rust_windows/bidibip.exe ./bidibip/
+      - run: mv ./artifact_windows/bidibip.exe ./bidibip/
       - run: zip -r bidibip_windows.zip ./bidibip/
       - run: rm -r ./bidibip
 
