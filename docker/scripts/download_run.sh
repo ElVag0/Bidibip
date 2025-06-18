@@ -6,7 +6,7 @@ VERSION=${1:-latest}
 rm -rf /opt/bidibip/bidibip
 
 # Download and extract desired bidibip version
-wget -O /opt/bidibip/bidibip.zip https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/bidibip_linux.zip
+wget -O /opt/bidibip/bidibip.zip https://github.com/Unreal-Engine-FR/Bidibip/releases/latest/download/bidibip_linux_musl.zip
 unzip /opt/bidibip/bidibip.zip -d /opt
 
 # Install
