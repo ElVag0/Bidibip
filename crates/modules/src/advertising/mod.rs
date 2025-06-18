@@ -16,7 +16,7 @@ use utils::error::BidibipError;
 use utils::{on_fail, on_fail_warn, assert_some, assert_warn_some};
 use crate::advertising::steps::main::{Contract, MainSteps};
 use crate::advertising::steps::{ResetStep, SubStep};
-use utils::utilities::{TruncateText, Username};
+use utils::utilities::{CommandHelper, TruncateText, Username};
 use utils::interaction_utils::{make_custom_id, InteractionUtils};
 use utils::create_command_detailed::CreateCommandDetailed;
 use utils::config::Config;
@@ -240,6 +240,15 @@ impl BidibipModule for Advertising {
                         on_fail!(Config::get().save_module_config::<Advertising, AdvertisingConfig>(&ad_config), "Failed to save ad_config")?;
                     } else if component.data.get_custom_id_data::<Advertising>("pre-publish").is_some() {
                         let ad_config = self.ad_config.read().await;
+
+                        for data in &ad_config.in_progress_ad {
+                            if data.1.0 == component.channel_id {
+                                if component.user.id != *data.0 {
+                                    component.respond_user_error(&ctx.http, "Tu n'es pas l'auteur de ce post !").await;
+                                }
+                            }
+                        }
+
                         on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Bien reçu, nous allons passer en revue ton annonce"))).await, "Failed to send confirmation message")?;
 
                         let mut message = format!("{} a terminé son annonce, nous allons procéder à quelques vérifications avant de la publier.\n", component.user.mention());
@@ -260,6 +269,18 @@ impl BidibipModule for Advertising {
 
                         let member = on_fail!(Config::get().server_id.member(&ctx.http, component.user.id).await, "Failed to get member data")?;
 
+                        let mut initial_user = None;
+                        for data in &ad_config.in_progress_ad {
+                            if data.1.0 == component.channel_id {
+                                initial_user = Some(on_fail!(data.0.to_user(&ctx.http).await, "Failed to get user data")?);
+                            }
+                        }
+                        let initial_user = assert_some!(initial_user, "Failed to get initial user")?;
+                        if initial_user.id == component.user.id {
+                            component.respond_user_error(&ctx.http, "Tu ne peux pas approuver toi même ton annonce !").await;
+                            return Ok(())
+                        }
+
                         let mut can_review = false;
                         for role in member.roles {
                             if ad_config.reviewer_roles.contains(&role) {
@@ -270,14 +291,6 @@ impl BidibipModule for Advertising {
                             on_fail!(component.create_response(&ctx.http, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("Tu n'as pas l'autorisation requise pour faire ceci !"))).await, "Failed to send response")?;
                             return Ok(());
                         }
-
-                        let mut initial_user = None;
-                        for data in &ad_config.in_progress_ad {
-                            if data.1.0 == component.channel_id {
-                                initial_user = Some(on_fail!(data.0.to_user(&ctx.http).await, "Failed to get user data")?);
-                            }
-                        }
-                        let initial_user = assert_some!(initial_user, "Failed to get initial user")?;
 
                         let mut data = if let Some((edition_thread, in_progress)) = ad_config.in_progress_ad.get_mut(&initial_user.id) {
                             if *edition_thread != component.channel_id {

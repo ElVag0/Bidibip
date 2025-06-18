@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Add;
+use std::str::FromStr;
 use std::sync::{Arc};
 use anyhow::Error;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -30,6 +31,7 @@ pub struct Warn {
 enum ActionType {
     Warn,
     BanVocal,
+    ExcludeDuration(i64),
     ExcludeOneHour,
     ExcludeOneDay,
     ExcludeOneWeek,
@@ -37,16 +39,47 @@ enum ActionType {
     Ban,
 }
 
+fn seconds_to_hhmmss(seconds: i64) -> String {
+    let time_seconds = seconds % 60;
+    let minutes = (seconds / 60) % 60;
+    let hours = (seconds / 60) / 60;
+    let mut duration_str = String::new();
+    if hours != 0 { duration_str += format!("{}h ", hours).as_str() }
+    if minutes != 0 { duration_str += format!("{}mn ", minutes).as_str() }
+    if time_seconds != 0 { duration_str += format!("{}s ", time_seconds).as_str() }
+    duration_str
+}
+
+fn hhmmss_to_seconds(hhmmss: &str) -> Result<i64, Error> {
+    let mut split = hhmmss.split(' ');
+
+    let mut seconds = 0;
+
+    while let Some(value) = split.next() {
+        if value.ends_with("s") {
+            seconds += i64::from_str(&value[0..value.len() - 2])?;
+        } else if value.ends_with("mn") {
+            seconds += i64::from_str(&value[0..value.len() - 3])? * 60;
+        } else if value.ends_with("h") {
+            seconds += i64::from_str(&value[0..value.len() - 2])? * 3600;
+        } else {
+            return Err(Error::msg(format!("Unknown time type : {}", value)))
+        }
+    }
+    Ok(seconds)
+}
+
 impl Display for ActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self {
-            ActionType::Warn => { "warn" }
-            ActionType::BanVocal => { "exclusion du vocal" }
-            ActionType::ExcludeOneHour => { "exclusion du serveur (1h)" }
-            ActionType::ExcludeOneDay => { "exclusion du serveur (1 jour)" }
-            ActionType::ExcludeOneWeek => { "exclusion du serveur (une semaine)" }
-            ActionType::Kick => { "kick" }
-            ActionType::Ban => { "ban" }
+            ActionType::Warn => { "warn".to_string() }
+            ActionType::BanVocal => { "exclusion du vocal".to_string() }
+            ActionType::ExcludeDuration(time_s) => { format!("exclusion du serveur pour ({})", seconds_to_hhmmss(*time_s)) }
+            ActionType::ExcludeOneHour => { "exclusion du serveur (1h)".to_string() }
+            ActionType::ExcludeOneDay => { "exclusion du serveur (1 jour)".to_string() }
+            ActionType::ExcludeOneWeek => { "exclusion du serveur (une semaine)".to_string() }
+            ActionType::Kick => { "kick".to_string() }
+            ActionType::Ban => { "ban".to_string() }
         };
         write!(f, "{}", str)
     }
@@ -138,12 +171,22 @@ impl BidibipModule for Warn {
                                             "exclusion une semaine" => ActionType::ExcludeOneWeek,
                                             "kick" => ActionType::Kick,
                                             "ban" => ActionType::Ban,
-                                            &_ => {
-                                                error!("Unhandled sanction command action");
-                                                return Err(BidibipError::from(Error::msg("Unhandled sanction command action")));
+                                            value => {
+                                                if value.starts_with("exclusion du serveur pour (") {
+                                                    let mut split = value.split(['(', ')']);
+                                                    split.next();
+                                                    if let Some(duration) = split.next() {
+                                                        ActionType::ExcludeDuration(hhmmss_to_seconds(duration)?)
+                                                    } else {
+                                                        error!("Unknown exclusion duration");
+                                                        return Err(BidibipError::from(Error::msg("Unknown exclusion duration")));
+                                                    }
+                                                } else {
+                                                    error!("Unhandled sanction command action");
+                                                    return Err(BidibipError::from(Error::msg("Unhandled sanction command action")));
+                                                }
                                             }
                                         };
-
                                         (action, user.id)
                                     } else {
                                         error!("Invalid user");
@@ -166,9 +209,20 @@ impl BidibipModule for Warn {
                     "exclusion une semaine" => ActionType::ExcludeOneWeek,
                     "kick" => ActionType::Kick,
                     "ban" => ActionType::Ban,
-                    &_ => {
-                        error!("Unhandled sanction command");
-                        return Err(BidibipError::from(Error::msg("Unhandled sanction command")));
+                    value => {
+                        if value.starts_with("exclusion du serveur pour (") {
+                            let mut split = value.split(['(', ')']);
+                            split.next();
+                            if let Some(duration) = split.next() {
+                                ActionType::ExcludeDuration(hhmmss_to_seconds(duration)?)
+                            } else {
+                                error!("Unknown exclusion duration");
+                                return Err(BidibipError::from(Error::msg("Unknown exclusion duration")));
+                            }
+                        } else {
+                            error!("Unhandled sanction command action");
+                            return Err(BidibipError::from(Error::msg("Unhandled sanction command action")));
+                        }
                     }
                 };
                 (action, target.to_user_id())
@@ -238,7 +292,8 @@ impl BidibipModule for Warn {
                         MemberAction::Update => {
                             let member = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http, to.id).await, "Failed to get member data")?;
 
-                            if member.communication_disabled_until.is_some() {
+                            if let Some(end) = member.communication_disabled_until {
+                                let duration = (end.timestamp_millis() - Timestamp::now().timestamp_millis()) / 1000;
                                 let warn_data = UserWarn {
                                     date: Utc::now().timestamp() as u64,
                                     from: Username::from_user(&from),
@@ -246,10 +301,10 @@ impl BidibipModule for Warn {
                                     link: None,
                                     reason: entry.reason.unwrap_or_default(),
                                     details: Some(String::from("Exclusion manuelle")),
-                                    action: ActionType::ExcludeOneHour.to_string(),
+                                    action: ActionType::ExcludeDuration(duration).to_string(),
                                     full_message_link: "".to_string(),
                                 };
-                                self.handle_warn_action(&ctx.http, warn_data, false, ActionType::ExcludeOneHour).await?;
+                                self.handle_warn_action(&ctx.http, warn_data, false, ActionType::ExcludeDuration(duration)).await?;
                             }
                         }
                         MemberAction::BanAdd => {
@@ -471,6 +526,12 @@ impl Warn {
             ActionType::BanVocal => {
                 warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new().title(format!("{} a été exclu du vocal par {}", warn_data.to.safe_full(), warn_data.from.safe_full())).description(&warn_data.reason.truncate_text(4000)))).await?;
             }
+            ActionType::ExcludeDuration(time_s) => {
+                warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
+                    .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
+                    .description(&warn_data.reason.truncate_text(4000))
+                    .field("durée", seconds_to_hhmmss(*time_s), true))).await?;
+            }
             ActionType::ExcludeOneHour => {
                 warn_config.public_warn_channel.send_message(http, CreateMessage::new().embed(CreateEmbed::new()
                     .title(format!("{} a été exclu par {}", warn_data.to.safe_full(), warn_data.from.safe_full()))
@@ -517,6 +578,9 @@ impl Warn {
                     ActionType::BanVocal => {
                         member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été banni des salons vocaux de **{server_name}**.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
+                    ActionType::ExcludeDuration(time_s) => {
+                        member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour {}.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", seconds_to_hhmmss(*time_s), warn_data.reason.truncate_text(1000)))).await?;
+                    }
                     ActionType::ExcludeOneHour => {
                         member.user.direct_message(http, CreateMessage::new().content(format!("## Hello :wave:\nTu as été exclu de **{server_name}** pour une heure.\nJe tiens à te rappeler que certains comportements ne sont pas tolérés sur notre communauté, à savoir :\n\n> `{}`\n\nMerci de prendre cet avertissement en considération. :point_up:", warn_data.reason.truncate_text(1000)))).await?;
                     }
@@ -550,6 +614,9 @@ impl Warn {
             }
             ActionType::BanVocal => {
                 member.add_role(http, self.warn_config.read().await.ban_vocal).await?
+            }
+            ActionType::ExcludeDuration(time_s) => {
+                member.disable_communication_until_datetime(http, Timestamp::from(Timestamp::now().add(TimeDelta::seconds(*time_s)))).await?
             }
             ActionType::ExcludeOneHour => {
                 member.disable_communication_until_datetime(http, Timestamp::from(Timestamp::now().add(TimeDelta::hours(1)))).await?

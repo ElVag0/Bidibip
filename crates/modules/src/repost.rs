@@ -425,7 +425,8 @@ impl BidibipModule for Repost {
                 }
                 let repost_config = if let Some(config) = config.forums.get(&potential_forum) { config.clone() } else { return Ok(()); };
 
-                let mut cnt = 3;
+                const NB_RETRY: i32 = 10;
+                let mut cnt = NB_RETRY;
                 let messages = loop {
                     match thread.messages(&ctx.http, GetMessages::new().limit(1)).await {
                         Ok(messages) => {
@@ -447,7 +448,7 @@ impl BidibipModule for Repost {
                     };
                 };
 
-                let initial_message = assert_some!(messages.first(), "Failed to get first message in thread")?;
+                let initial_message = assert_some!(messages.first(), format!("Failed to get first message in thread {} after {NB_RETRY} attempts", thread.mention()))?;
                 let thread_owner = on_fail!(GuildId::from(Config::get().server_id).member(&ctx.http,assert_some!(thread.owner_id, "Failed to get owner id")?).await, "Failed to get owner member")?;
                 let forum_name = on_fail!(potential_forum.name(&ctx.http).await, "Failed to get forum name")?;
 

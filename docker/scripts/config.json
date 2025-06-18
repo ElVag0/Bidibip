@@ -1,0 +1,21 @@
+{
+  "token": null,
+  "server_id": null,
+  "application_id": null,
+  "log_directory": "/opt/bidibip/logs",
+  "button_id_config": "/opt/bidibip/data/buttons.config",
+  "module_config_directory": "/opt/bidibip/data",
+  "disabled_modules": [],
+  "channels": {
+    "log_channel": null,
+    "staff_channel": null
+  },
+  "roles": {
+    "support": null,
+    "member": null,
+    "helper": null,
+    "administrator": null,
+    "mute": null
+  },
+  "cache_message_size": 10000
+}
