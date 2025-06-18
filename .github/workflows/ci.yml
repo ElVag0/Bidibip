@@ -49,15 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@main
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.7.3
-        with:
-          prefix-key: "cache-windows"
       - run: cargo build --release
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-rust-windows
+          name: artifact-windows
           retention-days: 1
           path: |
             ./target/release/bidibip.exe
@@ -79,19 +75,19 @@ jobs:
       - name: Retrieve artifact Rust/Windows
         uses: actions/download-artifact@main
         with:
-          name: artifact-linux_musl
+          name: artifact-windows
           path: ./artifact_linux_musl
 
       - name: Retrieve artifact Rust/Linux Musl
         uses: actions/download-artifact@main
         with:
-          name: artifact-rust-linux
+          name: artifact-linux_musl
           path: ./artifact_rust_linux
 
       - name: Retrieve artifact Rust/Linux
         uses: actions/download-artifact@main
         with:
-          name: artifact-rust-linux
+          name: artifact-linux
           path: ./artifact_rust_linux
 
       # Create Linux server zip
