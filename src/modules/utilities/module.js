@@ -212,7 +212,7 @@ class Module extends ModuleBase {
      */
     async user_joined(user) {
         let randomMessage = this.messages.join[Math.floor(Math.random() * this.messages.join.length)];
-        randomMessage += "\n> N'oublies pas de lire le {reglement} pour accéder au serveur."
+        randomMessage += "\n> N'oublie pas de lire le {reglement} puis de le valider pour accéder au reste du serveur."
         new Message()
             .set_text(randomMessage.replace(/{user}/g, user.mention())
                 .replace(/{reglement}/g, `<#${this.app_config.REGLEMENT_CHANNEL_ID}>`))
