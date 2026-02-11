@@ -1,20 +1,6 @@
 # file types
-.env
-*.log
-!*.template
-.vim
-package-lock.json
-
-# Directories
-local
-logs
-memstats
-node_modules
-static
-_*
-
-# Editor directories
 .idea
-.vscode
+Cargo.lock
 
+target/
 saved/

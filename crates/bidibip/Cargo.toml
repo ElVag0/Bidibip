@@ -1,0 +1,12 @@
+[package]
+name = "bidibip"
+version = "4.0.0"
+edition = "2021"
+
+[dependencies]
+utils = {path = "../utils"}
+modules = {path = "../modules"}
+serenity = { version = "0.12.4" }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["json"] }
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
