@@ -15,7 +15,11 @@
     "Bienvenue parmi nous {user} <:Logo_UEFR:1170408304766353488>",
     "{user} vient de nous rejoindre! Hâte de voir de quoi il est capable sur Unreal <:Logo_UE:1469521410534805759>",
     ":upside_down: {user} eunevneiB",
-    "Salutation {user}, n’hésite pas à parler de nous à tes amis développeurs Unreal."    
+    "Salutation {user}, n’hésite pas à parler de nous à tes amis développeurs Unreal.",
+    "{user} détecté, merci d'enrichir mes datas!",
+    "Hola {user}, ne t’en fais pas je respecte presque toutes les 3 lois de la robotique!",
+    "Iaorana {user}, pense à surveiller les jams et événements du serveur!",
+    "Hey {user}! Content que tu nous aies rejoint!"
   ],
   "leave": [
     "{user} a quitté le serveur, j’en grille mes circuits..",
