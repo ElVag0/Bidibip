@@ -5,15 +5,17 @@
     "Bienvenue {user} sur UEFR qui est d'après mes datas le meilleur serveur Unreal Engine de tous les temps!",
     "Salut à toi {user}, que l'engin irréel soit avec toi!",
     "Hello {user} 01000010 01101001 01100101 01101110 01110110 01100101 01101110 01110101 01100101!",
-    "{user} welcome! Bienvenido! 欢迎! NOOT-NOOT <:NootNoot_CalmeBienvenue:1170408298823037020>!",
+    "{user} welcome! Bienvenido! 欢迎! NOOT-NOOT <:NootNoot_CalmeBienvenue:1170408298823037020>",
     "{user} nous a rejoint, un futur grand développeur celui-là je le sens bien!",
     "{user} a spawn dans notre liste de membres!",
     "Réjouissez-vous {user} nous a rejoint!",
     "Bienvenue {user} prends le temps de bien te familiariser avec les salons du serveur, tu apprendras peut-être des choses inattendues!",
     "Coucou {user}! Je suis Bidibip le bot du serveur et je te souhaite la bienvenue!",
-    "Bienvenue sur Unreal Engine FR {user} :wave:!",
+    "Bienvenue sur Unreal Engine FR {user} :wave:",
     "Bienvenue parmi nous {user} <:Logo_UEFR:1170408304766353488>",
-    "{user} vient de nous rejoindre! Hâte de voir de quoi il est capable sur Unreal <:Logo_UE:1469521410534805759>!"
+    "{user} vient de nous rejoindre! Hâte de voir de quoi il est capable sur Unreal <:Logo_UE:1469521410534805759>",
+    ":upside_down: {user} eunevneiB",
+    "Salutation {user}, n’hésite pas à parler de nous à tes amis développeurs Unreal."    
   ],
   "leave": [
     "{user} a quitté le serveur, j’en grille mes circuits..",
