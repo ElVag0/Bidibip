@@ -20,7 +20,8 @@
     "Hola {user}, ne t’en fais pas je respecte presque toutes les 3 lois de la robotique!",
     "Iaorana {user}, pense à surveiller les jams et événements du serveur!",
     "Hey {user}! Content que tu nous aies rejoint!",
-    "Coucou {user}! Je suis Bidibip le bot du serveur et je te souhaite la bienvenue!"
+    "Coucou {user}! Je suis Bidibip le bot du serveur et je te souhaite la bienvenue!",
+    "Bienvenue {user} prends le temps de bien te familiariser avec les salons du serveur, tu apprendras peut-être des choses inattendues!",
   ],
   "leave": [
     "{user} a quitté le serveur, j’en grille mes circuits..",
